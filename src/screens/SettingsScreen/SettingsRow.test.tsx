@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import SettingsRow from './index';
+import SettingsRow from './SettingsRow';
 
 describe('SettingsRow', () => {
 	it('renders the label', () => {

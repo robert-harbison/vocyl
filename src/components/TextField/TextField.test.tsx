@@ -32,12 +32,12 @@ describe('TextField', () => {
 
 	it('applies error border class when error is set', () => {
 		render(<TextField error="Oops" />);
-		expect(screen.getByRole('textbox').className).toContain('border-red-500');
+		expect(screen.getByRole('textbox').className).toContain('border-error');
 	});
 
 	it('applies normal border class when no error', () => {
 		render(<TextField />);
-		expect(screen.getByRole('textbox').className).toContain('border-gray-700');
+		expect(screen.getByRole('textbox').className).toContain('border-border-input');
 	});
 
 	it('passes through additional className', () => {

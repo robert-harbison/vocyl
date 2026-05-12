@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import SettingsSection from './index';
+import SettingsSection from './SettingsSection';
 
 describe('SettingsSection', () => {
 	it('renders the title', () => {

@@ -3,9 +3,11 @@ mod overlay;
 mod settings;
 mod tray;
 mod windows;
+mod app;
 
 use tauri::Manager;
 
+use app::exit_app;
 use settings::{load_settings, save_settings, settings_exist};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -17,6 +19,7 @@ pub fn run() {
             settings_exist,
             load_settings,
             save_settings,
+            exit_app,
         ])
         .setup(|app| {
             tray::setup(app)?;
@@ -33,5 +36,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-
-

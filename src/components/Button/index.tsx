@@ -4,7 +4,7 @@ import { clsx } from 'clsx';
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 	loading?: boolean;
 	fullWidth?: boolean;
-	variant?: 'primary';
+	variant?: 'primary' | 'destructive';
 }
 
 export default function Button(props: ButtonProps): JSX.Element {
@@ -24,6 +24,8 @@ export default function Button(props: ButtonProps): JSX.Element {
 	const variants = {
 		primary:
 			'bg-primary hover:bg-primary-hover text-text focus:ring-primary focus:ring-offset-bg-base py-2 px-5',
+		destructive:
+			'bg-transparent hover:bg-error/10 text-error border border-error/40 focus:ring-error focus:ring-offset-bg-base py-2 px-5',
 	};
 
 	return (

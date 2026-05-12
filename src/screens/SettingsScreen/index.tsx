@@ -8,6 +8,7 @@ import Button from '@components/Button';
 import TextField from '@components/TextField';
 import SettingsRow from './SettingsRow';
 import SettingsSection from './SettingsSection';
+import { appService } from '@services/appService';
 
 interface FormValues {
 	testProperty: string;
@@ -93,10 +94,15 @@ export default function SettingsScreen() {
 							</select>
 						</SettingsRow>
 						<SettingsRow
-							label="Noise Suppression"
-							description="Reduce background noise during recording."
+							label="Output Device"
+							description="Headphones / Speakers used for text-to-speech."
 						>
-							<TogglePlaceholder />
+							<select
+								disabled
+								className="w-56 rounded-lg bg-bg-elevated border border-border-input px-3 py-1.5 text-sm text-text-faint focus:outline-none transition cursor-not-allowed"
+							>
+								<option>Default Output</option>
+							</select>
 						</SettingsRow>
 					</SettingsSection>
 
@@ -109,44 +115,51 @@ export default function SettingsScreen() {
 								⌃⇧Space
 							</kbd>
 						</SettingsRow>
+						<SettingsRow
+							label="Text-to-Speech Key"
+							description="Press this key combination to start / stop reading your currently selected text."
+						>
+							<kbd className="inline-flex items-center gap-1 rounded bg-bg-elevated border border-border-input px-2 py-1 text-xs text-text-muted font-mono">
+								⌃⇧Space
+							</kbd>
+						</SettingsRow>
 					</SettingsSection>
 
-					<div className="flex items-center justify-end gap-3">
-						{saved && (
-							<span className="text-sm text-success flex items-center gap-1.5">
-								<svg
-									className="w-4 h-4"
-									fill="none"
-									viewBox="0 0 24 24"
-									stroke="currentColor"
-									strokeWidth={2}
-								>
-									<path
-										strokeLinecap="round"
-										strokeLinejoin="round"
-										d="M5 13l4 4L19 7"
-									/>
-								</svg>
-								Saved
-							</span>
-						)}
-						<Button type="submit" loading={isSubmitting}>
-							Save Settings
+					<div className="flex items-center justify-between gap-3">
+						<Button
+							type="button"
+							variant="destructive"
+							onClick={() => void appService.exit()}
+						>
+							Exit Vocyl
 						</Button>
+
+						<div className="flex items-center gap-3">
+							{saved && (
+								<span className="text-sm text-success flex items-center gap-1.5">
+									<svg
+										className="w-4 h-4"
+										fill="none"
+										viewBox="0 0 24 24"
+										stroke="currentColor"
+										strokeWidth={2}
+									>
+										<path
+											strokeLinecap="round"
+											strokeLinejoin="round"
+											d="M5 13l4 4L19 7"
+										/>
+									</svg>
+									Saved
+								</span>
+							)}
+							<Button type="submit" loading={isSubmitting}>
+								Save Settings
+							</Button>
+						</div>
 					</div>
 				</form>
 			</main>
 		</div>
-	);
-}
-
-// ── Small sub-components ──────────────────────────────────────────────────────
-
-function TogglePlaceholder() {
-	return (
-		<div
-			className="w-10 h-6 rounded-full bg-bg-elevated opacity-50 cursor-not-allowed"
-			title="Coming soon"
-		/>
 	);
 }
