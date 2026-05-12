@@ -10,16 +10,7 @@
 		"frontendDist": "../dist"
 	},
 	"app": {
-		"windows": [
-			{
-				"label": "main",
-				"title": "Vocyl Settings",
-				"width": 800,
-				"height": 600,
-				"visible": false,
-				"skipTaskbar": true
-			}
-		],
+		"windows": [],
 		"security": {
 			"csp": null
 		}
