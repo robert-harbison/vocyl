@@ -1,30 +1,24 @@
-import './Global.css';
-import { useSettings } from './hooks/useSettings';
-import SetupScreen from './components/SetupScreen';
-import SettingsScreen from './components/SettingsScreen';
-import type { VocylSettings } from './types/settings';
+import { useSettingsContext } from '@contexts/SettingsContext';
+import SetupScreen from '@screens/SetupScreen';
+import SettingsScreen from '@screens/SettingsScreen';
+import Loader from '@components/Loader';
 
 function App() {
-	const { settings, saveSettings, loading, exists, setExists } =
-		useSettings();
+	const { loading, exists } = useSettingsContext();
 
 	if (loading) {
 		return (
-			<div className="min-h-screen bg-gray-950 flex items-center justify-center">
-				<div className="w-6 h-6 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+			<div className="min-h-screen bg-bg-base flex items-center justify-center">
+				<Loader />
 			</div>
 		);
 	}
 
 	if (!exists) {
-		const handleSetupComplete = async (initial: VocylSettings) => {
-			await saveSettings(initial);
-			setExists(true);
-		};
-		return <SetupScreen onComplete={handleSetupComplete} />;
+		return <SetupScreen />;
 	}
 
-	return <SettingsScreen settings={settings} onSave={saveSettings} />;
+	return <SettingsScreen />;
 }
 
 export default App;

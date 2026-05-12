@@ -11,6 +11,9 @@ const { version } = JSON.parse(readFileSync('./package.json', 'utf-8')) as {
 
 export default defineConfig(() => ({
 	plugins: [tailwindcss(), react()],
+	resolve: {
+		tsconfigPaths: true,
+	},
 	define: {
 		__APP_VERSION__: JSON.stringify(version),
 	},

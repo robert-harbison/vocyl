@@ -11,7 +11,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('eslint').Linter.Config[]} */
 export default [
-	{ ignores: ['dist', 'src-tauri/target', 'eslint.config.js'] },
+	{
+		ignores: [
+			'dist',
+			'coverage',
+			'src-tauri/target',
+			'eslint.config.js',
+			'commitlint.config.js',
+		],
+	},
 
 	js.configs.recommended,
 
@@ -33,10 +41,7 @@ export default [
 		rules: {
 			...reactHooks.configs.recommended.rules,
 
-			'react-refresh/only-export-components': [
-				'warn',
-				{ allowConstantExport: true },
-			],
+			'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
 
 			'@typescript-eslint/no-unused-vars': [
 				'error',

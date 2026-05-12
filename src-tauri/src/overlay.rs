@@ -39,7 +39,7 @@ pub fn setup<R: tauri::Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn s
                 match event.state {
                     ShortcutState::Pressed => {
                         let _ = overlay.show();
-                        // Do NOT focus the overlay — the user is still
+                        // Do NOT focus the overlay - the user is still
                         // typing/speaking into whatever was active.
                     }
                     ShortcutState::Released => {

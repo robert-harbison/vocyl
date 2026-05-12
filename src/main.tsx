@@ -1,9 +1,13 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import './Global.css';
 import App from './App';
+import { SettingsProvider } from '@contexts/SettingsContext';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
 	<React.StrictMode>
-		<App />
+		<SettingsProvider>
+			<App />
+		</SettingsProvider>
 	</React.StrictMode>,
 );

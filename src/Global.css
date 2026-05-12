@@ -1,6 +1,36 @@
 @import 'tailwindcss';
 
+@theme {
+	/* ── Brand (primary action colour) ───────────────────────── */
+	--color-primary: oklch(51.1% 0.262 276.966); /* indigo-600 */
+	--color-primary-hover: oklch(58.5% 0.233 277.117); /* indigo-500 */
+
+	/* ── Surfaces ─────────────────────────────────────────────── */
+	--color-bg-base: oklch(13% 0.028 261.692); /* gray-950 — page background */
+	--color-bg-surface: oklch(21% 0.034 264.665); /* gray-900 — cards / panels  */
+	--color-bg-elevated: oklch(27.8% 0.033 256.848); /* gray-800 — inputs / hover  */
+
+	/* ── Borders ──────────────────────────────────────────────── */
+	--color-border: oklch(27.8% 0.033 256.848); /* gray-800 */
+	--color-border-input: oklch(37.3% 0.034 259.733); /* gray-700 */
+
+	/* ── Text ─────────────────────────────────────────────────── */
+	--color-text: oklch(100% 0 0); /* white     */
+	--color-text-strong: oklch(92.8% 0.006 264.531); /* gray-200  */
+	--color-text-muted: oklch(87.2% 0.01 258.338); /* gray-300  */
+	--color-text-subtle: oklch(70.7% 0.022 261.325); /* gray-400  */
+	--color-text-faint: oklch(55.1% 0.023 264.364); /* gray-500  */
+
+	/* ── Feedback ─────────────────────────────────────────────── */
+	--color-error: oklch(70.4% 0.191 22.216); /* red-400  */
+	--color-error-bg: oklch(39.6% 0.141 25.723); /* red-900  */
+	--color-error-border: oklch(30.9% 0.132 25.185); /* red-800  */
+	--color-success: oklch(79.2% 0.209 151.711); /* green-400 */
+}
+
 :root {
+	--color-recording: #ff3b30;
+
 	font-synthesis: none;
 	text-rendering: optimizeLegibility;
 	-webkit-font-smoothing: antialiased;

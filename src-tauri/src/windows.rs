@@ -19,6 +19,7 @@ pub fn open_settings_window<R: tauri::Runtime>(
         .inner_size(800.0, 600.0)
         .center()
         .resizable(false)
+        .maximizable(false)
         .skip_taskbar(true)
         .build()?;
     let _ = window.set_focus();

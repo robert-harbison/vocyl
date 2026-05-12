@@ -19,7 +19,19 @@
 		"noUnusedLocals": true,
 		"noUnusedParameters": true,
 		"noFallthroughCasesInSwitch": true,
-		"strictNullChecks": true
+		"strictNullChecks": true,
+
+		/* Path aliases */
+		"baseUrl": ".",
+		"paths": {
+			"@/*": ["src/*"],
+			"@screens/*": ["src/screens/*"],
+			"@components/*": ["src/components/*"],
+			"@assets/*": ["src/assets/*"],
+			"@models/*": ["src/models/*"],
+			"@contexts/*": ["src/contexts/*"],
+			"@services/*": ["src/services/*"]
+		}
 	},
 	"include": ["src"],
 	"references": [{ "path": "./tsconfig.node.json" }]
