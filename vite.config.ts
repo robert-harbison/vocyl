@@ -1,11 +1,20 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { resolve } from 'path';
 
 const host = process.env.TAURI_DEV_HOST ?? false;
 
 export default defineConfig(() => ({
 	plugins: [react()],
 	clearScreen: false,
+	build: {
+		rollupOptions: {
+			input: {
+				main: resolve(__dirname, 'index.html'),
+				overlay: resolve(__dirname, 'overlay.html'),
+			},
+		},
+	},
 	test: {
 		environment: 'jsdom',
 		globals: true,
