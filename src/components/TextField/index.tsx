@@ -8,15 +8,9 @@ interface TextFieldProps extends InputHTMLAttributes<HTMLInputElement> {
 	ref?: Ref<HTMLInputElement>;
 }
 
-export default function TextField({
-	label,
-	hint,
-	error,
-	id,
-	ref,
-	className = '',
-	...rest
-}: TextFieldProps) {
+export default function TextField(props: TextFieldProps) {
+	const { label, hint, error, id, ref, className = '', ...rest } = props;
+
 	return (
 		<div>
 			{label && (
