@@ -1,0 +1,6 @@
+dist
+target
+gen
+node_modules
+pnpm-lock.yaml
+*.tsbuildinfo
