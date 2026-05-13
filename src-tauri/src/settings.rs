@@ -1,44 +1,91 @@
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 use tauri::Manager;
 
-use crate::constants::SETTINGS_SCHEMA_VERSION;
+use crate::constants::{
+    DEFAULT_PTT_SHORTCUT, DEFAULT_TTS_SHORTCUT, SETTINGS_SCHEMA_VERSION,
+};
 
-// ── Default helpers (required by serde) ───────────────────────────────────────
+// ── Defaults ──────────────────────────────────────────────────────────────────
 
 fn default_schema_version() -> u32 {
     SETTINGS_SCHEMA_VERSION
 }
-
-fn default_test_property() -> String {
-    String::new()
+fn default_ptt_shortcut() -> String {
+    DEFAULT_PTT_SHORTCUT.to_string()
+}
+fn default_tts_shortcut() -> String {
+    DEFAULT_TTS_SHORTCUT.to_string()
+}
+fn default_tts_engine() -> String {
+    "kokoro".to_string()
+}
+fn default_tts_voice() -> Option<String> {
+    Some("af_heart".to_string())
 }
 
-// ── Type ──────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase", default)]
 pub struct VocylSettings {
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
-    #[serde(default = "default_test_property")]
-    pub test_property: String,
+
+    pub input_device_id: Option<String>,
+    pub output_device_id: Option<String>,
+
+    #[serde(default = "default_ptt_shortcut")]
+    pub ptt_shortcut: String,
+
+    #[serde(default = "default_tts_shortcut")]
+    pub tts_shortcut: String,
+
+    #[serde(default = "default_tts_engine")]
+    pub tts_engine: String,
+
+    pub active_tts_model_id: Option<String>,
+
+    #[serde(default = "default_tts_voice")]
+    pub tts_voice: Option<String>,
+
+    pub active_stt_model: Option<String>,
 }
 
 impl Default for VocylSettings {
     fn default() -> Self {
         Self {
             schema_version: SETTINGS_SCHEMA_VERSION,
-            test_property: default_test_property(),
+            input_device_id: None,
+            output_device_id: None,
+            ptt_shortcut: default_ptt_shortcut(),
+            tts_shortcut: default_tts_shortcut(),
+            tts_engine: default_tts_engine(),
+            active_tts_model_id: None,
+            tts_voice: default_tts_voice(),
+            active_stt_model: None,
         }
     }
 }
 
+/// In-memory settings cache updated on every save so shortcut handlers can
+/// read settings without hitting the filesystem.
+pub struct SettingsCache(pub Mutex<VocylSettings>);
+
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-fn settings_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
+pub fn settings_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
     let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     Ok(dir.join("settings.json"))
+}
+
+pub fn load_settings_internal<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<VocylSettings, String> {
+    let path = settings_path(app)?;
+    let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&content).map_err(|e| e.to_string())
 }
 
 // ── Tauri commands ────────────────────────────────────────────────────────────
@@ -52,9 +99,7 @@ pub fn settings_exist<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> bool {
 pub fn load_settings<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
 ) -> Result<VocylSettings, String> {
-    let path = settings_path(&app)?;
-    let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&content).map_err(|e| e.to_string())
+    load_settings_internal(&app)
 }
 
 #[tauri::command]
@@ -67,5 +112,12 @@ pub fn save_settings<R: tauri::Runtime>(
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
-    std::fs::write(path, json).map_err(|e| e.to_string())
+    std::fs::write(path, json).map_err(|e| e.to_string())?;
+
+    // Update in-memory cache
+    if let Some(cache) = app.try_state::<SettingsCache>() {
+        *cache.0.lock().unwrap() = settings;
+    }
+
+    Ok(())
 }

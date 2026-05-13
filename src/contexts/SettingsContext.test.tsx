@@ -18,7 +18,14 @@ const mockService = vi.mocked(settingsServiceModule.settingsService);
 
 const mockSettings: VocylSettings = {
 	schemaVersion: SETTINGS_SCHEMA_VERSION,
-	testProperty: 'hello',
+	inputDeviceId: null,
+	outputDeviceId: null,
+	pttShortcut: 'CmdOrCtrl+Shift+F8',
+	ttsShortcut: 'CmdOrCtrl+Shift+F9',
+	ttsEngine: 'kokoro',
+	activeTtsModelId: null,
+	ttsVoice: 'af_heart',
+	activeSttModel: null,
 };
 
 const wrapper = ({ children }: { children: React.ReactNode }) =>

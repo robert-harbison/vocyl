@@ -1,35 +1,26 @@
 import { useForm } from 'react-hook-form';
-import { SETTINGS_SCHEMA_VERSION } from '@models/settings';
+import { DEFAULT_SETTINGS, SETTINGS_SCHEMA_VERSION } from '@models/settings';
 import { useSettingsContext } from '@contexts/SettingsContext';
 import Button from '@components/Button';
-import TextField from '@components/TextField';
-
-interface FormValues {
-	testProperty: string;
-}
 
 export default function SetupScreen() {
 	const { saveSettings } = useSettingsContext();
 
 	const {
-		register,
 		handleSubmit,
-		formState: { isSubmitting, errors },
-	} = useForm<FormValues>({
-		defaultValues: { testProperty: '' },
-	});
+		formState: { isSubmitting },
+	} = useForm();
 
-	const onSubmit = async (data: FormValues) => {
+	const onSubmit = async () => {
 		await saveSettings({
+			...DEFAULT_SETTINGS,
 			schemaVersion: SETTINGS_SCHEMA_VERSION,
-			testProperty: data.testProperty,
 		});
 	};
 
 	return (
 		<div className="min-h-screen bg-bg-base flex items-center justify-center p-6">
 			<div className="w-full max-w-md">
-				{/* Logo / brand */}
 				<div className="text-center mb-10">
 					<div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary mb-4">
 						<svg
@@ -50,26 +41,31 @@ export default function SetupScreen() {
 						Welcome to Vocyl
 					</h1>
 					<p className="mt-2 text-text-subtle text-sm">
-						Let's get you set up. You can change these settings any time from the tray
-						icon.
+						Voice-to-text and text-to-speech for your desktop. Configure everything from
+						the Settings window.
 					</p>
 				</div>
 
-				{/* Setup form */}
 				<form
 					onSubmit={(e) => void handleSubmit(onSubmit)(e)}
-					className="bg-bg-surface rounded-2xl border border-border p-6 space-y-6"
+					className="bg-bg-surface rounded-2xl border border-border p-6 space-y-4"
 				>
-					<TextField
-						{...register('testProperty', { required: 'This field is required' })}
-						id="testProperty"
-						label="Test Property"
-						type="text"
-						placeholder="Enter a value..."
-						hint="This is a placeholder field — more settings will appear here."
-						error={errors.testProperty?.message}
-						className="w-full"
-					/>
+					<div className="space-y-2 text-sm text-text-faint">
+						<p>
+							Default shortcuts will be set up automatically. You can change them and
+							download TTS/STT models in Settings.
+						</p>
+						<ul className="space-y-1 pl-4 list-disc">
+							<li>
+								Push-to-talk:{' '}
+								<span className="font-mono text-text-muted">⌃⇧F8</span>
+							</li>
+							<li>
+								Read selection:{' '}
+								<span className="font-mono text-text-muted">⌃⇧F9</span>
+							</li>
+						</ul>
+					</div>
 
 					<Button type="submit" loading={isSubmitting} fullWidth>
 						Get Started
