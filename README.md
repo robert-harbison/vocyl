@@ -1,6 +1,6 @@
 # Vocyl
 
-Vocyl is a work-in-progress tool for text to speach and speach to text on your computer.
+Vocyl is a work-in-progress tool for text-to-speech and speech-to-text on your computer.
 
 # Support
 
