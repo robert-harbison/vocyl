@@ -301,11 +301,27 @@ pub async fn download_whisper(app: tauri::AppHandle) -> Result<(), String> {
 
 pub fn get_sherpa_tts_bin<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
     let dir = binary_dir(app, "sherpa")?;
-    let candidate = dir.join("sherpa-onnx-tts.exe");
-    if candidate.exists() {
-        return Ok(candidate);
+    // Search recursively for the CLI exe (it may be nested inside the extracted folder)
+    find_exe_recursive(&dir, "sherpa-onnx-offline-tts.exe")
+        .ok_or_else(|| "Sherpa-ONNX TTS not installed. Download it in Settings → Text-to-Speech.".to_string())
+}
+
+/// Recursively find an executable by name under `dir`.
+fn find_exe_recursive(dir: &PathBuf, name: &str) -> Option<PathBuf> {
+    let direct = dir.join(name);
+    if direct.exists() {
+        return Some(direct);
     }
-    Err("Sherpa-ONNX TTS not installed. Download it in Settings → Text-to-Speech.".to_string())
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                if let Some(found) = find_exe_recursive(&entry.path(), name) {
+                    return Some(found);
+                }
+            }
+        }
+    }
+    None
 }
 
 #[tauri::command]
@@ -318,13 +334,13 @@ pub async fn download_sherpa_tts(app: tauri::AppHandle) -> Result<(), String> {
     let dest = binary_dir(&app, "sherpa")?;
     tokio::fs::create_dir_all(&dest).await.map_err(|e| e.to_string())?;
 
-    let out_path = dest.join("sherpa-onnx-tts.exe");
-    if out_path.exists() {
+    // Already installed?
+    if get_sherpa_tts_bin(&app).is_ok() {
         let _ = app.emit("download-complete", serde_json::json!({ "dir": "binaries", "filename": "sherpa" }));
         return Ok(());
     }
 
-    let tmp_path = dest.join("sherpa-onnx-tts.exe.tmp");
+    let tmp_path = dest.join("sherpa-tts.tar.bz2.tmp");
     let client = reqwest::Client::new();
     let response = client
         .get(SHERPA_TTS_WIN_URL)
@@ -359,7 +375,21 @@ pub async fn download_sherpa_tts(app: tauri::AppHandle) -> Result<(), String> {
         }
     }
 
-    tokio::fs::rename(&tmp_path, &out_path).await.map_err(|e| e.to_string())?;
+    let dest_dir = dest.clone();
+    let tmp = tmp_path.clone();
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        use bzip2::read::BzDecoder;
+        use tar::Archive;
+
+        let file = std::fs::File::open(&tmp).map_err(|e| e.to_string())?;
+        let mut archive = Archive::new(BzDecoder::new(file));
+        archive.unpack(&dest_dir).map_err(|e| e.to_string())?;
+        std::fs::remove_file(&tmp).ok();
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
     let _ = app.emit("download-complete", serde_json::json!({ "dir": "binaries", "filename": "sherpa" }));
     Ok(())
 }

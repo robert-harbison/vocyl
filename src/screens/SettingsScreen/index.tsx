@@ -184,7 +184,9 @@ function BinaryRow({
 				<p className="text-sm font-medium text-text-strong">{label}</p>
 				<p className="text-xs text-text-faint mt-0.5">{description}</p>
 			</div>
-			{isDownloading ?
+			{isInstalled ?
+				<span className="text-xs text-success font-medium">✓ Installed</span>
+			: isDownloading ?
 				<div className="flex items-center gap-2 min-w-[112px]">
 					<div className="flex-1 h-1 bg-bg-elevated rounded-full overflow-hidden">
 						<div
@@ -194,8 +196,6 @@ function BinaryRow({
 					</div>
 					<span className="text-xs text-text-faint w-8 text-right">{progress}%</span>
 				</div>
-			: isInstalled ?
-				<span className="text-xs text-success font-medium">✓ Installed</span>
 			:	<button
 					type="button"
 					onClick={onDownload}

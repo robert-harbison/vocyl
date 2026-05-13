@@ -35,6 +35,7 @@ impl TtsState {
 
 // ── Get selected text ─────────────────────────────────────────────────────────
 
+// TODO: Is there a nicer way to do this without the clipboard hack? And would it work cross platform?
 /// Simulate Ctrl+C to copy the current selection, read the clipboard, then
 /// restore the previous clipboard content.
 pub fn get_selected_text() -> Result<String, String> {
@@ -278,18 +279,20 @@ async fn speak_kokoro<R: tauri::Runtime>(
     let mut cmd = tokio::process::Command::new(&sherpa_bin);
     cmd.args(&args)
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
+        .stderr(std::process::Stdio::piped());
 
-    // Prevent the sherpa-onnx GUI window from appearing on Windows
+    // Prevent any console window from appearing on Windows
     #[cfg(target_os = "windows")]
     cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
 
-    let status = cmd
-        .status()
+    let output = cmd
+        .output()
         .await
         .map_err(|e| format!("Failed to start sherpa-onnx: {e}"))?;
 
-    if !status.success() {
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        eprintln!("[vocyl] sherpa-onnx stderr: {stderr}");
         return Err("Kokoro synthesis failed. Check that the model was downloaded correctly.".to_string());
     }
 

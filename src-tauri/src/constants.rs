@@ -22,9 +22,9 @@ pub const WHISPER_WIN_URL: &str =
 pub const PIPER_WIN_URL: &str =
     "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip";
 
-/// Sherpa-ONNX non-streaming TTS binary (statically linked, no additional DLLs required).
+/// Sherpa-ONNX static CLI package (tar.bz2) — contains sherpa-onnx-offline-tts.exe (headless CLI).
 pub const SHERPA_TTS_WIN_URL: &str =
-    "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.1/sherpa-onnx-non-streaming-tts-x64-v1.13.1.exe";
+    "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.1/sherpa-onnx-v1.13.1-win-x64-static-MT-Release.tar.bz2";
 
 /// Kokoro English v0.19 model package (tar.bz2, includes model, voices, tokens, espeak-ng-data).
 pub const KOKORO_PKG_URL: &str =
