@@ -440,7 +440,7 @@ export default function SettingsScreen() {
 					<SettingsSection title="Speech-to-Text">
 						<BinaryRow
 							label="Whisper Runtime"
-							description="Required to run speech recognition."
+							description="Speech recognition engine. Built into the app on Linux and macOS; requires a separate download on Windows."
 							isInstalled={whisperInstalled}
 							dlKey="binaries/whisper"
 							dlStates={dlStates}

@@ -54,9 +54,8 @@ impl TtsState {
 
 // ── Get selected text ─────────────────────────────────────────────────────────
 
-// TODO: Is there a nicer way to do this without the clipboard hack? And would it work cross platform?
-/// Simulate Ctrl+C to copy the current selection, read the clipboard, then
-/// restore the previous clipboard content.
+/// Simulate the platform copy shortcut on the current selection, read the
+/// clipboard, then restore the previous clipboard content.
 pub fn get_selected_text() -> Result<String, String> {
     use arboard::Clipboard;
     use enigo::{Direction, Enigo, Key, Settings};
@@ -67,25 +66,34 @@ pub fn get_selected_text() -> Result<String, String> {
     let mut enigo = Enigo::new(&Settings::default())
         .map_err(|e| format!("Failed to create input handler: {e:?}"))?;
 
-    // Release Shift/Alt that may still be physically held from the global
-    // shortcut combo (e.g. Ctrl+Shift+F9). Without this the simulated Ctrl+C
-    // would arrive as Ctrl+Shift+C which most apps do not treat as "copy".
+    // Release modifiers that may still be held from the global shortcut combo.
     enigo.key(Key::Shift, Direction::Release).ok();
     enigo.key(Key::Alt, Direction::Release).ok();
+    #[cfg(target_os = "macos")]
+    enigo.key(Key::Meta, Direction::Release).ok();
 
-    // Brief pause so modifier-release events settle before we send Ctrl+C
+    // Brief pause so modifier-release events settle before we send the copy key.
     std::thread::sleep(Duration::from_millis(50));
 
-    enigo.key(Key::Control, Direction::Press).map_err(|e| format!("{e:?}"))?;
-    enigo.key(Key::C, Direction::Click).map_err(|e| format!("{e:?}"))?;
-    enigo.key(Key::Control, Direction::Release).map_err(|e| format!("{e:?}"))?;
+    // macOS uses Cmd+C; Linux and Windows use Ctrl+C.
+    #[cfg(target_os = "macos")]
+    {
+        enigo.key(Key::Meta, Direction::Press).map_err(|e| format!("{e:?}"))?;
+        enigo.key(Key::C, Direction::Click).map_err(|e| format!("{e:?}"))?;
+        enigo.key(Key::Meta, Direction::Release).map_err(|e| format!("{e:?}"))?;
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        enigo.key(Key::Control, Direction::Press).map_err(|e| format!("{e:?}"))?;
+        enigo.key(Key::C, Direction::Click).map_err(|e| format!("{e:?}"))?;
+        enigo.key(Key::Control, Direction::Release).map_err(|e| format!("{e:?}"))?;
+    }
 
-    // Give the target app time to update the clipboard
+    // Give the target app time to update the clipboard.
     std::thread::sleep(Duration::from_millis(200));
 
     let selected = clipboard.get_text().unwrap_or_default();
 
-    // Restore old clipboard content
     if let Some(old) = saved {
         clipboard.set_text(old).ok();
     }
@@ -354,19 +362,25 @@ fn build_kokoro_config(
     }
 }
 
-/// Create an [`OfflineTts`] engine, trying DirectML first and falling back to CPU.
+/// Create an [`OfflineTts`] engine.
+/// On Windows, DirectML (GPU) is tried first and falls back to CPU.
+/// On macOS and Linux, CPU is used directly.
 fn create_kokoro_engine(
     model_dir: &PathBuf,
     num_threads: i32,
 ) -> Result<sherpa_onnx::OfflineTts, String> {
-    sherpa_onnx::OfflineTts::create(&build_kokoro_config(model_dir, num_threads, "directml"))
-        .or_else(|| {
-            eprintln!("[vocyl] DirectML unavailable, falling back to CPU.");
-            sherpa_onnx::OfflineTts::create(&build_kokoro_config(model_dir, num_threads, "cpu"))
-        })
-        .ok_or_else(|| {
-            "Failed to initialise Kokoro TTS engine. Check the model files.".to_string()
-        })
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(tts) = sherpa_onnx::OfflineTts::create(
+            &build_kokoro_config(model_dir, num_threads, "directml"),
+        ) {
+            return Ok(tts);
+        }
+        eprintln!("[vocyl] DirectML unavailable, falling back to CPU.");
+    }
+
+    sherpa_onnx::OfflineTts::create(&build_kokoro_config(model_dir, num_threads, "cpu"))
+        .ok_or_else(|| "Failed to initialise Kokoro TTS engine. Check the model files.".to_string())
 }
 
 async fn speak_kokoro<R: tauri::Runtime>(

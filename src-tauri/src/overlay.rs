@@ -27,7 +27,10 @@ pub fn setup<R: tauri::Runtime>(
         .focused(false)
         .build()?;
 
-    overlay.set_ignore_cursor_events(true)?;
+    // set_ignore_cursor_events is not supported on all Linux compositors.
+    if let Err(e) = overlay.set_ignore_cursor_events(true) {
+        eprintln!("[vocyl] click-through overlay unavailable: {e}");
+    }
 
     if let Ok(Some(monitor)) = overlay.primary_monitor() {
         let scale = monitor.scale_factor();
@@ -45,7 +48,11 @@ pub fn setup<R: tauri::Runtime>(
         (s.ptt_shortcut.clone(), s.tts_shortcut.clone())
     };
 
-    register_shortcuts(app.handle(), &ptt_shortcut, &tts_shortcut)?;
+    // Global shortcuts require X11 or Windows/macOS. On Wayland they are
+    // silently unavailable — log the failure instead of aborting startup.
+    if let Err(e) = register_shortcuts(app.handle(), &ptt_shortcut, &tts_shortcut) {
+        eprintln!("[vocyl] global shortcuts unavailable (Wayland?): {e}");
+    }
 
     Ok(())
 }
