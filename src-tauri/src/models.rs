@@ -298,6 +298,11 @@ pub async fn download_whisper(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 // ── Sherpa-ONNX TTS binary ────────────────────────────────────────────────────
+// These functions remain for users who may have already downloaded the sherpa
+// binary. The Kokoro engine now uses the native sherpa-onnx Rust crate instead
+// of this binary, so these are no longer called by the app.
+
+#[allow(dead_code)]
 
 pub fn get_sherpa_tts_bin<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
     let dir = binary_dir(app, "sherpa")?;
@@ -330,6 +335,7 @@ pub fn is_sherpa_tts_installed(app: tauri::AppHandle) -> bool {
 }
 
 #[tauri::command]
+#[allow(dead_code)]
 pub async fn download_sherpa_tts(app: tauri::AppHandle) -> Result<(), String> {
     let dest = binary_dir(&app, "sherpa")?;
     tokio::fs::create_dir_all(&dest).await.map_err(|e| e.to_string())?;

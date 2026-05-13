@@ -35,7 +35,7 @@ reqwest = { version = "0.12", features = ["stream"] }
 futures-util = "0.3"
 
 # Async file I/O and process execution
-tokio = { version = "1", features = ["fs", "process", "time"] }
+tokio = { version = "1", features = ["fs", "process", "time", "sync", "macros", "rt"] }
 
 # Text injection at cursor
 enigo = "0.3"
@@ -46,12 +46,15 @@ hound = "3.5"
 # ZIP archive extraction for binary downloads
 zip = "2"
 
-# tar.bz2 extraction for sherpa-onnx / Kokoro model packages
+# tar.bz2 extraction for Kokoro model package
 bzip2 = "0.4"
 tar = "0.4"
 
 # Clipboard read/write for TTS selected-text capture
 arboard = "3"
+
+# Kokoro TTS — native ONNX inference, model stays loaded between calls
+sherpa-onnx = "1"
 
 # Faster incremental builds in dev, small binary in release
 [profile.dev]

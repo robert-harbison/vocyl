@@ -220,7 +220,6 @@ export default function SettingsScreen() {
 	const [sttFiles, setSttFiles] = useState<string[]>([]);
 	const [piperInstalled, setPiperInstalled] = useState(false);
 	const [whisperInstalled, setWhisperInstalled] = useState(false);
-	const [sherpaInstalled, setSherpaInstalled] = useState(false);
 	const [kokoroInstalled, setKokoroInstalled] = useState(false);
 	const [dlStates, setDlStates] = useState<DownloadStates>({});
 
@@ -261,15 +260,13 @@ export default function SettingsScreen() {
 	}, []);
 
 	const refreshBinaries = useCallback(async () => {
-		const [piper, whisper, sherpa, kokoro] = await Promise.all([
+		const [piper, whisper, kokoro] = await Promise.all([
 			modelService.isPiperInstalled(),
 			modelService.isWhisperInstalled(),
-			modelService.isSherpaInstalled(),
 			modelService.isKokoroInstalled(),
 		]);
 		setPiperInstalled(piper);
 		setWhisperInstalled(whisper);
-		setSherpaInstalled(sherpa);
 		setKokoroInstalled(kokoro);
 	}, []);
 
@@ -517,19 +514,8 @@ export default function SettingsScreen() {
 						{ttsEngine === 'kokoro' && (
 							<>
 								<BinaryRow
-									label="Sherpa-ONNX TTS Runtime"
-									description="Inference engine for Kokoro (~21 MB)."
-									isInstalled={sherpaInstalled}
-									dlKey="binaries/sherpa"
-									dlStates={dlStates}
-									onDownload={() =>
-										modelService.downloadSherpa().catch(console.error)
-									}
-								/>
-
-								<BinaryRow
 									label="Kokoro English Model"
-									description="Voice model + phoneme data (~90 MB)."
+									description="Voice model + phoneme data (~90 MB). The inference runtime is built into the app."
 									isInstalled={kokoroInstalled}
 									dlKey="tts/kokoro"
 									dlStates={dlStates}

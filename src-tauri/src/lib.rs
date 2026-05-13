@@ -16,7 +16,7 @@ use app::exit_app;
 use overlay::update_shortcuts;
 use settings::{load_settings, save_settings, settings_exist, SettingsCache};
 use stt::SttState;
-use tts::TtsState;
+use tts::{prewarm_kokoro, TtsState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -39,11 +39,9 @@ pub fn run() {
             models::delete_file,
             models::is_piper_installed,
             models::is_whisper_installed,
-            models::is_sherpa_tts_installed,
             models::is_kokoro_installed,
             models::download_piper,
             models::download_whisper,
-            models::download_sherpa_tts,
             models::download_kokoro_package,
             // App
             exit_app,
@@ -60,6 +58,10 @@ pub fn run() {
 
             tray::setup(app)?;
             overlay::setup(app)?;
+
+            // Pre-warm the Kokoro TTS engine in the background so the first
+            // TTS call doesn't incur the model-loading delay.
+            prewarm_kokoro(app.handle());
 
             // Auto-show settings on first run
             let config_dir = app.path().app_config_dir()?;
