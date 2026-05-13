@@ -22,7 +22,7 @@ fn default_tts_engine() -> String {
     "kokoro".to_string()
 }
 fn default_tts_voice() -> Option<String> {
-    Some("af_heart".to_string())
+    Some("af".to_string())
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────

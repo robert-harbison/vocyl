@@ -23,6 +23,6 @@ export const DEFAULT_SETTINGS: VocylSettings = {
 	ttsShortcut: 'CmdOrCtrl+Shift+F9',
 	ttsEngine: 'kokoro',
 	activeTtsModelId: null,
-	ttsVoice: 'af_heart',
+	ttsVoice: 'af',
 	activeSttModel: null,
 };

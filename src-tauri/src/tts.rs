@@ -47,12 +47,21 @@ pub fn get_selected_text() -> Result<String, String> {
     let mut enigo = Enigo::new(&Settings::default())
         .map_err(|e| format!("Failed to create input handler: {e:?}"))?;
 
+    // Release Shift/Alt that may still be physically held from the global
+    // shortcut combo (e.g. Ctrl+Shift+F9). Without this the simulated Ctrl+C
+    // would arrive as Ctrl+Shift+C which most apps do not treat as "copy".
+    enigo.key(Key::Shift, Direction::Release).ok();
+    enigo.key(Key::Alt, Direction::Release).ok();
+
+    // Brief pause so modifier-release events settle before we send Ctrl+C
+    std::thread::sleep(Duration::from_millis(50));
+
     enigo.key(Key::Control, Direction::Press).map_err(|e| format!("{e:?}"))?;
     enigo.key(Key::C, Direction::Click).map_err(|e| format!("{e:?}"))?;
     enigo.key(Key::Control, Direction::Release).map_err(|e| format!("{e:?}"))?;
 
     // Give the target app time to update the clipboard
-    std::thread::sleep(Duration::from_millis(150));
+    std::thread::sleep(Duration::from_millis(200));
 
     let selected = clipboard.get_text().unwrap_or_default();
 
@@ -266,10 +275,16 @@ async fn speak_kokoro<R: tauri::Runtime>(
 
     args.push(text.to_string());
 
-    let status = tokio::process::Command::new(&sherpa_bin)
-        .args(&args)
+    let mut cmd = tokio::process::Command::new(&sherpa_bin);
+    cmd.args(&args)
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+
+    // Prevent the sherpa-onnx GUI window from appearing on Windows
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+
+    let status = cmd
         .status()
         .await
         .map_err(|e| format!("Failed to start sherpa-onnx: {e}"))?;

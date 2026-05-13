@@ -497,7 +497,10 @@ export default function SettingsScreen() {
 													type="radio"
 													value={engine}
 													checked={field.value === engine}
-													onChange={() => field.onChange(engine)}
+													onChange={() => {
+														field.onChange(engine);
+														setValue('activeTtsModelId', null);
+													}}
 													className="accent-primary"
 												/>
 												<span className="text-sm text-text capitalize">

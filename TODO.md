@@ -10,3 +10,8 @@
 - Add proper logging.
 - Make build system to build for mac linux and windows with a npm commands.
 - Add download support for multiple operating systems (constants.rs)
+- Make update strategy
+- Figure out hosting for downloads / updates / model downloads. (S3?)
+    - Use their github links / websites as a fallback.
+- Store models and versions in like a model manefest or something.
+-
