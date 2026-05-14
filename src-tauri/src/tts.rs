@@ -76,16 +76,23 @@ pub fn get_selected_text() -> Result<String, String> {
     std::thread::sleep(Duration::from_millis(50));
 
     // macOS uses Cmd+C; Linux and Windows use Ctrl+C.
+    // Key::C is #[cfg(target_os = "windows")] only in enigo 0.3; other platforms need Key::Unicode.
     #[cfg(target_os = "macos")]
     {
         enigo.key(Key::Meta, Direction::Press).map_err(|e| format!("{e:?}"))?;
-        enigo.key(Key::C, Direction::Click).map_err(|e| format!("{e:?}"))?;
+        enigo.key(Key::Unicode('c'), Direction::Click).map_err(|e| format!("{e:?}"))?;
         enigo.key(Key::Meta, Direction::Release).map_err(|e| format!("{e:?}"))?;
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
     {
         enigo.key(Key::Control, Direction::Press).map_err(|e| format!("{e:?}"))?;
         enigo.key(Key::C, Direction::Click).map_err(|e| format!("{e:?}"))?;
+        enigo.key(Key::Control, Direction::Release).map_err(|e| format!("{e:?}"))?;
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        enigo.key(Key::Control, Direction::Press).map_err(|e| format!("{e:?}"))?;
+        enigo.key(Key::Unicode('c'), Direction::Click).map_err(|e| format!("{e:?}"))?;
         enigo.key(Key::Control, Direction::Release).map_err(|e| format!("{e:?}"))?;
     }
 
