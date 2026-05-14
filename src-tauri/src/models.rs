@@ -464,6 +464,7 @@ fn find_exe_recursive(dir: &PathBuf, name: &str) -> Option<PathBuf> {
     None
 }
 
+// TODO: Is this used? If not do we need it? Do we still need this for sherpa crate?
 #[tauri::command]
 pub fn is_sherpa_tts_installed(app: tauri::AppHandle) -> bool {
     get_sherpa_tts_bin(&app).is_ok()
