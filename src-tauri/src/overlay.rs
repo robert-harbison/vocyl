@@ -27,7 +27,11 @@ pub fn setup<R: tauri::Runtime>(
         .focused(false)
         .build()?;
 
-    // set_ignore_cursor_events is not supported on all Linux compositors.
+    // tao 0.35 panics inside the event loop on Linux when set_ignore_cursor_events
+    // is called before the GDK window is realized (window.window() returns None and
+    // tao unwraps it unconditionally). The Err return never reaches our code.
+    // Click-through is best-effort on Linux anyway — skip it there entirely.
+    #[cfg(not(target_os = "linux"))]
     if let Err(e) = overlay.set_ignore_cursor_events(true) {
         eprintln!("[vocyl] click-through overlay unavailable: {e}");
     }
