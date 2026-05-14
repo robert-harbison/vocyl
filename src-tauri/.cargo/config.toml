@@ -1,0 +1,8 @@
+[env]
+# Disable AVX2/FMA/F16C in the whisper.cpp (GGML) build so the AppImage runs on
+# any x86_64 CPU, not only those with Haswell+ SIMD (Sandy/Ivy Bridge and many
+# server/VM CPUs lack these). whisper-rs-sys build.rs reads these and passes
+# -DGGML_*=OFF to CMake. AVX is kept — it's available on all x86_64 since 2011.
+WHISPER_NO_AVX2 = "1"
+WHISPER_NO_FMA  = "1"
+WHISPER_NO_F16C = "1"

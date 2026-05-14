@@ -15,7 +15,7 @@ use crate::{
 pub fn setup<R: tauri::Runtime>(
     app: &mut tauri::App<R>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let overlay = WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App("overlay.html".into()))
+    let builder = WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App("overlay.html".into()))
         .title("")
         .inner_size(OVERLAY_W, OVERLAY_H)
         .transparent(true)
@@ -23,9 +23,14 @@ pub fn setup<R: tauri::Runtime>(
         .always_on_top(true)
         .skip_taskbar(true)
         .visible(false)
-        .resizable(false)
-        .focused(false)
-        .build()?;
+        .resizable(false);
+    // focused(false) triggers a tao 0.35 panic on Linux: when the overlay is
+    // first shown via show(), a focus event fires before the GDK window is
+    // realized, causing unwrap() on None in tao's event_loop.rs:457. Same
+    // root cause as the set_ignore_cursor_events guard below.
+    #[cfg(not(target_os = "linux"))]
+    let builder = builder.focused(false);
+    let overlay = builder.build()?;
 
     // tao 0.35 panics inside the event loop on Linux when set_ignore_cursor_events
     // is called before the GDK window is realized (window.window() returns None and
