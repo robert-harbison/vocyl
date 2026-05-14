@@ -1,11 +1,17 @@
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
-/// Opens the settings window. If it is already open, focuses it instead.
+/// Opens the settings window. If it is already open, brings it to the front.
 pub fn toggle_settings<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
+        // On Linux, overlay show/hide cycles can leave the window in a hidden
+        // state (the handle still exists in Tauri's registry but the window is
+        // withdrawn). show() must come before set_focus() to make it visible.
+        let _ = window.show();
         let _ = window.set_focus();
     } else {
-        let _ = open_settings_window(app);
+        if let Err(e) = open_settings_window(app) {
+            eprintln!("[vocyl] failed to open settings window: {e}");
+        }
     }
 }
 
