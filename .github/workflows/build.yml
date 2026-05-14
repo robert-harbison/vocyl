@@ -147,20 +147,29 @@ jobs:
       #   xattr -d com.apple.quarantine /path/to/Vocyl.app
       # ────────────────────────────────────────────────────────────────────────────────────
 
+      # Build with --bundles app only: Tauri's bundle_dmg.sh uses hdiutil which is
+      # unreliable on GitHub runners. We zip the .app ourselves with ditto instead.
+      # The package:mac scripts (dmg,app) are kept for local use unchanged.
       - name: Build macOS ARM64
-        run: npm run package:mac
+        run: npx tauri build --bundles app
 
       - name: Build macOS Intel
-        run: npm run package:mac:intel
+        run: npx tauri build --target x86_64-apple-darwin --bundles app
+
+      - name: Zip macOS ARM64
+        run: ditto -c -k --keepParent src-tauri/target/release/bundle/macos/vocyl.app vocyl-macos-arm64.zip
+
+      - name: Zip macOS Intel
+        run: ditto -c -k --keepParent src-tauri/target/x86_64-apple-darwin/release/bundle/macos/vocyl.app vocyl-macos-intel.zip
 
       - uses: actions/upload-artifact@v4
         with:
           name: vocyl-macos-arm64
-          path: src-tauri/target/release/bundle/dmg/*.dmg
+          path: vocyl-macos-arm64.zip
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         with:
           name: vocyl-macos-intel
-          path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+          path: vocyl-macos-intel.zip
           if-no-files-found: error
