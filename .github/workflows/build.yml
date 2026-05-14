@@ -112,13 +112,6 @@ jobs:
   # ─────────────────────────────────────────────
   build-macos:
     runs-on: macos-latest
-    # Job-level env so MACOSX_DEPLOYMENT_TARGET is set before cmake ever runs.
-    # The cmake crate (used by whisper-rs-sys) skips reconfiguration when
-    # CMakeCache.txt already exists, so it must be set correctly on the FIRST
-    # cmake invocation — a step-level env is too late if a cached CMakeCache.txt
-    # was written without it. The intel build step overrides this to "10.15".
-    env:
-      MACOSX_DEPLOYMENT_TARGET: "11.0"
     steps:
       - uses: actions/checkout@v4
 
@@ -134,14 +127,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          # v2: bust caches from earlier runs that stored a CMakeCache.txt
-          # configured without the correct MACOSX_DEPLOYMENT_TARGET.
-          key: v2
+          # v3: bust caches built when tauri was defaulting MACOSX_DEPLOYMENT_TARGET
+          # to 10.13 (cmake configured ggml without std::filesystem support).
+          # Root fix is tauri.conf.json bundle.macOS.minimumSystemVersion = "10.15".
+          key: v3
 
       - run: npm ci
 
       # ── macOS code signing + notarization (add when you have an Apple Developer account) ──
-      # Add these as repository secrets, then uncomment the env blocks below:
+      # Add these as repository secrets, then add an env: block to each build step below:
       #   APPLE_CERTIFICATE          — base64-encoded .p12 (Developer ID Application cert)
       #   APPLE_CERTIFICATE_PASSWORD — p12 password
       #   APPLE_SIGNING_IDENTITY     — "Developer ID Application: Your Name (TEAMID)"
@@ -154,25 +148,10 @@ jobs:
       # ────────────────────────────────────────────────────────────────────────────────────
 
       - name: Build macOS ARM64
-        # Inherits MACOSX_DEPLOYMENT_TARGET=11.0 from job level.
-        # ── When you have an Apple Developer account, add an env: block here with:
-        #   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
-        #   APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID  (all from repository secrets)
         run: npm run package:mac
 
       - name: Build macOS Intel
         run: npm run package:mac:intel
-        env:
-          # 10.15 is the minimum macOS with std::filesystem; overrides the job-level 11.0.
-          # Intel target uses a separate target dir so its CMakeCache.txt is independent.
-          MACOSX_DEPLOYMENT_TARGET: "10.15"
-          # ── Uncomment when you have an Apple Developer account ──────────
-          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # APPLE_ID: ${{ secrets.APPLE_ID }}
-          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - uses: actions/upload-artifact@v4
         with:
