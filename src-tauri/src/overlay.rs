@@ -190,51 +190,38 @@ fn handle_tts<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     }
 
     log::info!("TTS: shortcut pressed — capturing selected text");
-
-    // `get_selected_text` blocks for ~350 ms (modifier-release pause + clipboard
-    // settle wait).  Running it on the global-shortcut callback thread would stall
-    // the entire shortcut subsystem, so we hand it off to a blocking thread.
-    let app_handle = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let text_result = tokio::task::spawn_blocking(get_selected_text).await;
-
-        let text = match text_result {
-            Ok(Ok(t)) if !t.trim().is_empty() => {
-                log::info!("TTS: got selected text ({} chars)", t.trim().len());
-                t.trim().to_string()
-            }
-            Ok(Ok(_)) => {
-                log::info!("TTS: no text selected");
-                if let Some(overlay) = app_handle.get_webview_window("overlay") {
-                    let _ = overlay.show();
-                }
-                emit_overlay_state(&app_handle, "no-text");
-
-                let handle = app_handle.clone();
-                tokio::spawn(async move {
-                    tokio::time::sleep(Duration::from_millis(1200)).await;
-                    if let Some(overlay) = handle.get_webview_window("overlay") {
-                        let _ = overlay.hide();
-                    }
-                });
-
-                return;
-            }
-            Ok(Err(e)) => {
-                log::error!("TTS: failed to get selected text: {}", e);
-                return;
-            }
-            Err(e) => {
-                log::error!("TTS: get_selected_text task panicked: {}", e);
-                return;
-            }
-        };
-
-        if let Some(overlay) = app_handle.get_webview_window("overlay") {
-            let _ = overlay.show();
+    let text = match get_selected_text() {
+        Ok(t) if !t.trim().is_empty() => {
+            log::info!("TTS: got selected text ({} chars)", t.trim().len());
+            t.trim().to_string()
         }
-        emit_overlay_state(&app_handle, "reading");
+        Ok(_) => {
+            log::info!("TTS: no text selected");
+            if let Some(overlay) = app.get_webview_window("overlay") {
+                let _ = overlay.show();
+            }
+            emit_overlay_state(app, "no-text");
 
-        start_speaking(&app_handle, text);
-    });
+            let handle = app.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(1200)).await;
+                if let Some(overlay) = handle.get_webview_window("overlay") {
+                    let _ = overlay.hide();
+                }
+            });
+
+            return;
+        }
+        Err(e) => {
+            log::error!("TTS: failed to get selected text: {}", e);
+            return;
+        }
+    };
+
+    if let Some(overlay) = app.get_webview_window("overlay") {
+        let _ = overlay.show();
+    }
+    emit_overlay_state(app, "reading");
+
+    start_speaking(app, text);
 }
