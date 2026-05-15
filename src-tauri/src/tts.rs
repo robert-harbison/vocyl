@@ -58,18 +58,18 @@ impl TtsState {
 ///
 /// Strategy (all platforms):
 ///   1. Save the current clipboard, then **clear** it.
-///   2. Send the platform copy shortcut (Ctrl+C / Cmd+C).
-///   3. Read the clipboard.
+///   2. Release any modifier keys still held from the global shortcut combo.
+///   3. Send the platform copy shortcut (Ctrl+C / Cmd+C).
+///   4. Read the clipboard.
 ///      - Non-empty  → something was selected; return it.
 ///      - Empty      → nothing was selected (shortcut was a no-op); return "".
-///   4. Restore the original clipboard so the user's data is not lost.
+///   5. Restore the original clipboard so the user's data is not lost.
 ///
-/// Clearing before the shortcut is the key insight that makes "nothing selected"
-/// detectable on every platform:
-///   • Windows/macOS: Ctrl+C / Cmd+C is a no-op when nothing is selected.
-///   • Linux/X11: X11's PRIMARY selection persists even after text is
-///     deselected, so reading PRIMARY is unreliable.  The Ctrl+C + clear
-///     approach works correctly here too.
+/// Known limitation — **Wayland**: compositor security prevents enigo from
+/// injecting keystrokes into other applications.  On Wayland the copy
+/// shortcut is silently dropped, the clipboard stays empty, and this fn
+/// returns `Ok("")` (triggering the "no text selected" overlay message).
+/// The feature requires X11 (XWayland is fine).
 pub fn get_selected_text() -> Result<String, String> {
     use arboard::Clipboard;
     use enigo::{Direction, Enigo, Key, Settings};
@@ -79,18 +79,27 @@ pub fn get_selected_text() -> Result<String, String> {
     // Save whatever is in the clipboard so we can restore it later.
     let saved = clipboard.get_text().ok();
 
-    // Clear the clipboard. If the copy shortcut does nothing (no selection),
-    // the clipboard will remain empty and we can return "" correctly.
+    // Clear the clipboard. If the copy shortcut does nothing (no text
+    // selected, or Wayland key-injection block), it stays empty and we can
+    // return "" to show the "no text selected" overlay instead of speaking
+    // stale clipboard content.
     clipboard.set_text("").map_err(|e| e.to_string())?;
 
     let mut enigo = Enigo::new(&Settings::default())
         .map_err(|e| format!("Failed to create input handler: {e:?}"))?;
 
-    // Release modifiers that may still be held from the global shortcut combo.
+    // Release every modifier that could have been held as part of the global
+    // shortcut combo.  This avoids sending e.g. Ctrl+Ctrl+C when the user's
+    // shortcut already included Ctrl.
     enigo.key(Key::Shift, Direction::Release).ok();
     enigo.key(Key::Alt, Direction::Release).ok();
+    #[cfg(not(target_os = "macos"))]
+    enigo.key(Key::Control, Direction::Release).ok();
     #[cfg(target_os = "macos")]
-    enigo.key(Key::Meta, Direction::Release).ok();
+    {
+        enigo.key(Key::Meta, Direction::Release).ok();
+        enigo.key(Key::Control, Direction::Release).ok();
+    }
 
     // Brief pause so modifier-release events settle before we send the copy key.
     std::thread::sleep(Duration::from_millis(50));
@@ -115,8 +124,9 @@ pub fn get_selected_text() -> Result<String, String> {
         enigo.key(Key::Control, Direction::Release).map_err(|e| format!("{e:?}"))?;
     }
 
-    // Give the target app time to update the clipboard.
-    std::thread::sleep(Duration::from_millis(200));
+    // Give the target app time to write to the clipboard.
+    // 300 ms is enough for all tested apps; slow systems or VMs may need more.
+    std::thread::sleep(Duration::from_millis(300));
 
     // Read the result (empty string means no text was selected).
     let selected = clipboard.get_text().unwrap_or_default();
