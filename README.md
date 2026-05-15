@@ -15,3 +15,33 @@ Planned platform support:
 Vocyl is currently in very early development and is not ready for production use.
 
 Public releases are not yet available. Once the project reaches a more stable state, installation instructions, documentation, and prebuilt binaries will be added here.
+
+## License
+
+Vocyl is licensed under the [Apache License, Version 2.0](LICENSE).
+
+### Third-party components
+
+Vocyl integrates with several third-party open-source components. Full license details are in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) and [NOTICE](NOTICE).
+
+**Compiled into the Vocyl binary** (MIT or Apache-2.0, fully compatible):
+[Tauri](https://tauri.app), [cpal](https://github.com/RustAudio/cpal), [rodio](https://github.com/RustAudio/rodio), [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), [whisper-rs](https://github.com/tazz4843/whisper-rs) (Linux/macOS), [tokio](https://tokio.rs), [reqwest](https://github.com/seanmonstar/reqwest), [serde](https://serde.rs), [enigo](https://github.com/enigo-rs/enigo), [arboard](https://github.com/1Password/arboard), [hound](https://github.com/ruuda/hound), and others.
+
+**Downloaded at the user's request (separate from the Vocyl binary):**
+
+| Component                                                  | License     | Notes                                                                               |
+| ---------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------- |
+| [Piper TTS](https://github.com/OHF-Voice/piper1-gpl)       | **GPL-3.0** | Optional; run as a separate subprocess. Source at the link above.                   |
+| [whisper.cpp CLI](https://github.com/ggml-org/whisper.cpp) | MIT         | Windows only; run as a separate subprocess.                                         |
+| Kokoro model (model/voices/tokens)                         | Apache-2.0  | ONNX model weights.                                                                 |
+| espeak-ng data (bundled in Kokoro package)                 | **GPL-3.0** | Phonemizer data files. Source: [espeak-ng](https://github.com/espeak-ng/espeak-ng). |
+| Whisper GGML models                                        | MIT         | Original models by OpenAI.                                                          |
+
+> **Note on GPL-3.0 components:** Piper and the espeak-ng phonemizer data files
+> (bundled in the Kokoro model package) are GPL-3.0 licensed. They are never
+> compiled into or linked with the Vocyl binary — Piper runs as a fully separate
+> OS process, and the espeak-ng data files are loaded at runtime by the
+> sherpa-onnx library. Vocyl's Apache-2.0 license applies only to the Vocyl
+> source code and binary. Users who download Piper or the Kokoro model package
+> receive GPL-3.0-licensed software and are subject to those terms.
+> Source code for both is freely available at the links above.
