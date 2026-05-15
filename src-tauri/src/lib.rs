@@ -11,6 +11,7 @@ mod app;
 
 use std::sync::Mutex;
 use tauri::Manager;
+use tauri::Emitter;
 
 use app::exit_app;
 use overlay::update_shortcuts;
@@ -21,6 +22,15 @@ use tts::{prewarm_kokoro, TtsState};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // A second launch was attempted — focus the existing window and
+            // notify the UI so it can display a warning to the user.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+            app.emit("single-instance-attempted", ()).ok();
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
