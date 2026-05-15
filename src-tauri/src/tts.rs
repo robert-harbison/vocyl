@@ -56,56 +56,84 @@ impl TtsState {
 
 /// Simulate the platform copy shortcut on the current selection, read the
 /// clipboard, then restore the previous clipboard content.
+///
+/// On Linux/X11, selected text is automatically placed in the PRIMARY selection;
+/// reading PRIMARY directly is faster and more reliable than simulating Ctrl+C.
 pub fn get_selected_text() -> Result<String, String> {
     use arboard::Clipboard;
     use enigo::{Direction, Enigo, Key, Settings};
 
-    let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
-    let saved = clipboard.get_text().ok();
-
-    let mut enigo = Enigo::new(&Settings::default())
-        .map_err(|e| format!("Failed to create input handler: {e:?}"))?;
-
-    // Release modifiers that may still be held from the global shortcut combo.
-    enigo.key(Key::Shift, Direction::Release).ok();
-    enigo.key(Key::Alt, Direction::Release).ok();
-    #[cfg(target_os = "macos")]
-    enigo.key(Key::Meta, Direction::Release).ok();
-
-    // Brief pause so modifier-release events settle before we send the copy key.
-    std::thread::sleep(Duration::from_millis(50));
-
-    // macOS uses Cmd+C; Linux and Windows use Ctrl+C.
-    // Key::C is #[cfg(target_os = "windows")] only in enigo 0.3; other platforms need Key::Unicode.
-    #[cfg(target_os = "macos")]
+    // ── Linux / X11: read the PRIMARY selection directly ──────────────────────
+    // On X11 any text selection immediately populates the PRIMARY buffer —
+    // no Ctrl+C needed.  Reading CLIPBOARD here would return the *previous*
+    // clipboard content, which is the bug this branch fixes.
+    #[cfg(target_os = "linux")]
     {
-        enigo.key(Key::Meta, Direction::Press).map_err(|e| format!("{e:?}"))?;
-        enigo.key(Key::Unicode('c'), Direction::Click).map_err(|e| format!("{e:?}"))?;
-        enigo.key(Key::Meta, Direction::Release).map_err(|e| format!("{e:?}"))?;
+        use arboard::{GetExtLinux, LinuxClipboardKind};
+        let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
+        let selected = clipboard
+            .get()
+            .clipboard(LinuxClipboardKind::Primary)
+            .text()
+            .unwrap_or_default();
+        log::debug!("TTS: X11 PRIMARY selection: {} chars", selected.len());
+        return Ok(selected);
     }
-    #[cfg(target_os = "windows")]
+
+    // ── macOS / Windows: simulate the platform copy shortcut ─────────────────
+    #[allow(unreachable_code)]
     {
-        enigo.key(Key::Control, Direction::Press).map_err(|e| format!("{e:?}"))?;
-        enigo.key(Key::C, Direction::Click).map_err(|e| format!("{e:?}"))?;
-        enigo.key(Key::Control, Direction::Release).map_err(|e| format!("{e:?}"))?;
+        let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
+
+        // Save whatever is currently in the clipboard so we can restore it.
+        let saved = clipboard.get_text().ok();
+
+        // Clear the clipboard before sending the copy shortcut.
+        // If the shortcut does nothing (no text selected), the clipboard will
+        // remain empty afterwards; we can then return "" and show the overlay
+        // "no text selected" message instead of speaking the old clipboard.
+        clipboard.set_text("").map_err(|e| e.to_string())?;
+
+        let mut enigo = Enigo::new(&Settings::default())
+            .map_err(|e| format!("Failed to create input handler: {e:?}"))?;
+
+        // Release modifiers that may still be held from the global shortcut combo.
+        enigo.key(Key::Shift, Direction::Release).ok();
+        enigo.key(Key::Alt, Direction::Release).ok();
+        #[cfg(target_os = "macos")]
+        enigo.key(Key::Meta, Direction::Release).ok();
+
+        // Brief pause so modifier-release events settle before we send the copy key.
+        std::thread::sleep(Duration::from_millis(50));
+
+        // macOS uses Cmd+C; Windows uses Ctrl+C.
+        #[cfg(target_os = "macos")]
+        {
+            enigo.key(Key::Meta, Direction::Press).map_err(|e| format!("{e:?}"))?;
+            enigo.key(Key::Unicode('c'), Direction::Click).map_err(|e| format!("{e:?}"))?;
+            enigo.key(Key::Meta, Direction::Release).map_err(|e| format!("{e:?}"))?;
+        }
+        #[cfg(target_os = "windows")]
+        {
+            enigo.key(Key::Control, Direction::Press).map_err(|e| format!("{e:?}"))?;
+            enigo.key(Key::C, Direction::Click).map_err(|e| format!("{e:?}"))?;
+            enigo.key(Key::Control, Direction::Release).map_err(|e| format!("{e:?}"))?;
+        }
+
+        // Give the target app time to update the clipboard.
+        std::thread::sleep(Duration::from_millis(200));
+
+        // Read whatever the copy shortcut placed in the clipboard (empty = nothing selected).
+        let selected = clipboard.get_text().unwrap_or_default();
+
+        // Always restore the user's original clipboard content.
+        match saved {
+            Some(old) if !old.is_empty() => { clipboard.set_text(old).ok(); }
+            _ => {}
+        }
+
+        Ok(selected)
     }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        enigo.key(Key::Control, Direction::Press).map_err(|e| format!("{e:?}"))?;
-        enigo.key(Key::Unicode('c'), Direction::Click).map_err(|e| format!("{e:?}"))?;
-        enigo.key(Key::Control, Direction::Release).map_err(|e| format!("{e:?}"))?;
-    }
-
-    // Give the target app time to update the clipboard.
-    std::thread::sleep(Duration::from_millis(200));
-
-    let selected = clipboard.get_text().unwrap_or_default();
-
-    if let Some(old) = saved {
-        clipboard.set_text(old).ok();
-    }
-
-    Ok(selected)
 }
 
 // ── TTS speak ─────────────────────────────────────────────────────────────────

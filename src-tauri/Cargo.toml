@@ -1,6 +1,6 @@
 [package]
 name = "vocyl"
-version = "0.0.0-dev1"
+version = "0.0.0-dev2"
 description = "Vocyl cross-platform TTS/STT app."
 authors = ["you"]
 edition = "2021"
