@@ -11,7 +11,6 @@ use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     SampleFormat,
 };
-use enigo::Keyboard;
 use tauri::{Emitter, Manager};
 
 use crate::{
@@ -213,7 +212,31 @@ async fn transcribe_subprocess(
     sample_rate: u32,
     channels: u16,
 ) -> Result<String, String> {
-    let wav_path = write_temp_wav(&samples, sample_rate, channels)?;
+    // Mix to mono then resample to 16 kHz — whisper.cpp's internal resampler
+    // produces garbage (hallucinated dots) when given raw multi-channel /
+    // high-sample-rate audio on Windows.
+    let mono: Vec<f32> = if channels > 1 {
+        samples
+            .chunks_exact(channels as usize)
+            .map(|frame| frame.iter().sum::<f32>() / channels as f32)
+            .collect()
+    } else {
+        samples
+    };
+    let mut audio_16k = if sample_rate != 16_000 {
+        resample_linear(&mono, sample_rate, 16_000)
+    } else {
+        mono
+    };
+
+    // Prepend 300 ms of silence. Whisper's first segment often hallucinates
+    // consonant repetitions (e.g. "nnnnn") when real speech starts at sample 0
+    // because the model expects a brief quiet onset. The padding costs nothing
+    // in transcription accuracy and reliably fixes the first-word corruption.
+    let pad = vec![0.0f32; (16_000.0 * 0.3) as usize];
+    audio_16k.splice(0..0, pad);
+
+    let wav_path = write_temp_wav(&audio_16k)?;
 
     let output = tokio::process::Command::new(&whisper_bin)
         .args([
@@ -239,10 +262,13 @@ async fn transcribe_subprocess(
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
+
     let transcript = stdout
         .lines()
         .map(|l| l.trim())
         .filter(|l| !l.is_empty())
+        .filter(|l| !l.starts_with("whisper_") && !l.starts_with("ggml_") && !l.starts_with("main:"))
+        .filter(|l| !(l.starts_with('[') && l.ends_with(']')))
         .collect::<Vec<_>>()
         .join(" ");
 
@@ -250,7 +276,7 @@ async fn transcribe_subprocess(
 }
 
 #[cfg(target_os = "windows")]
-fn write_temp_wav(samples: &[f32], sample_rate: u32, channels: u16) -> Result<PathBuf, String> {
+fn write_temp_wav(samples: &[f32]) -> Result<PathBuf, String> {
     let path = std::env::temp_dir().join(format!(
         "vocyl_stt_{}.wav",
         std::time::SystemTime::now()
@@ -260,15 +286,18 @@ fn write_temp_wav(samples: &[f32], sample_rate: u32, channels: u16) -> Result<Pa
     ));
 
     let spec = hound::WavSpec {
-        channels,
-        sample_rate,
-        bits_per_sample: 32,
-        sample_format: hound::SampleFormat::Float,
+        channels: 1,
+        sample_rate: 16_000,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
     };
 
     let mut writer = hound::WavWriter::create(&path, spec).map_err(|e| e.to_string())?;
     for &s in samples {
-        writer.write_sample(s).map_err(|e| e.to_string())?;
+        // Clamp to [-1, 1] before converting to avoid i16 overflow on hot samples.
+        let s = s.clamp(-1.0, 1.0);
+        let pcm = (s * 32767.0) as i16;
+        writer.write_sample(pcm).map_err(|e| e.to_string())?;
     }
     writer.finalize().map_err(|e| e.to_string())?;
 
@@ -296,11 +325,15 @@ async fn transcribe_native(
         };
 
         // Whisper requires exactly 16 kHz. Resample if the capture device used a different rate.
-        let audio = if sample_rate != 16_000 {
+        let mut audio = if sample_rate != 16_000 {
             resample_linear(&mono, sample_rate, 16_000)
         } else {
             mono
         };
+
+        // Prepend 300 ms of silence — fixes first-word hallucination at segment 0.
+        let pad = vec![0.0f32; (16_000.0 * 0.3) as usize];
+        audio.splice(0..0, pad);
 
         let ctx = whisper_rs::WhisperContext::new_with_params(
             model_path.to_str().unwrap_or_default(),
@@ -346,7 +379,6 @@ async fn transcribe_native(
 
 /// Linear resampler for voice audio. Adequate quality for speech; avoids an
 /// extra dependency. Whisper.cpp requires exactly 16 kHz mono f32 input.
-#[cfg(not(target_os = "windows"))]
 fn resample_linear(samples: &[f32], from_hz: u32, to_hz: u32) -> Vec<f32> {
     let ratio = from_hz as f64 / to_hz as f64;
     let out_len = (samples.len() as f64 / ratio).round() as usize;
@@ -365,13 +397,38 @@ fn resample_linear(samples: &[f32], from_hz: u32, to_hz: u32) -> Vec<f32> {
 // ── Text injection ────────────────────────────────────────────────────────────
 
 pub fn inject_text(text: &str) -> Result<(), String> {
-    use enigo::{Enigo, Settings};
-    let mut enigo = Enigo::new(&Settings::default())
-        .map_err(|e| format!("Failed to create input injector: {e:?}"))?;
-    enigo
-        .text(text)
-        .map_err(|e| format!("Text injection failed: {e:?}"))?;
-    Ok(())
+    #[cfg(target_os = "windows")]
+    {
+        // enigo's text() on Windows corrupts longer strings via SendInput/unicode.
+        // Clipboard + Ctrl+V is what every other Windows STT tool uses and is reliable.
+        use arboard::Clipboard;
+        use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+
+        let mut clipboard = Clipboard::new().map_err(|e| format!("Clipboard error: {e}"))?;
+        clipboard.set_text(text).map_err(|e| format!("Failed to copy transcript to clipboard: {e}"))?;
+
+        let mut enigo = Enigo::new(&Settings::default())
+            .map_err(|e| format!("Failed to create input injector: {e:?}"))?;
+        enigo.key(Key::Control, Direction::Press)
+            .map_err(|e| format!("Key injection failed: {e:?}"))?;
+        enigo.key(Key::Unicode('v'), Direction::Click)
+            .map_err(|e| format!("Key injection failed: {e:?}"))?;
+        enigo.key(Key::Control, Direction::Release)
+            .map_err(|e| format!("Key injection failed: {e:?}"))?;
+
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        use enigo::{Enigo, Keyboard, Settings};
+        let mut enigo = Enigo::new(&Settings::default())
+            .map_err(|e| format!("Failed to create input injector: {e:?}"))?;
+        enigo
+            .text(text)
+            .map_err(|e| format!("Text injection failed: {e:?}"))?;
+        Ok(())
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
