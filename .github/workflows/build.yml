@@ -124,6 +124,13 @@ jobs:
         with:
           targets: x86_64-apple-darwin
 
+      # macOS runners (macOS 15+) ship with a Homebrew `rustup` formula that
+      # puts a `cargo` shim (actually `rustup-init`) in Homebrew's bin, which
+      # can shadow the real cargo installed by dtolnay/rust-toolchain.
+      # Prepending ~/.cargo/bin ensures the correct cargo is found first.
+      - name: Ensure cargo is on PATH
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
