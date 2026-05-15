@@ -67,7 +67,11 @@ function keyboardEventToShortcut(e: KeyboardEvent): string | null {
 
 	if (mods.length === 0) return null;
 
-	const key = KEY_NAMES[e.key] ?? e.key.toUpperCase();
+	// Use e.code (physical key) instead of e.key so that Shift+9 records "9"
+	// rather than the shifted character "(". Strip "Key" prefix (e.g. "KeyA" → "A")
+	// and "Digit" prefix (e.g. "Digit9" → "9") from code values.
+	const rawCode = e.code.replace(/^Key/, '').replace(/^Digit/, '');
+	const key = KEY_NAMES[e.key] ?? rawCode;
 	return [...mods, key].join('+');
 }
 
