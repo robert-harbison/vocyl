@@ -143,11 +143,22 @@ fn handle_ptt<R: tauri::Runtime>(app: &tauri::AppHandle<R>, state: ShortcutState
                 match stop_and_transcribe(&handle).await {
                     Ok(transcript) if !transcript.is_empty() => {
                         log::info!("PTT: transcript received, injecting text");
-                        tokio::time::sleep(Duration::from_millis(50)).await;
+
+                        // Hide the overlay BEFORE injecting so the OS returns focus
+                        // to the user's previous application. If we skip this the
+                        // Ctrl+V / Cmd+V keystroke lands in the overlay window.
+                        if let Some(overlay) = handle.get_webview_window("overlay") {
+                            let _ = overlay.hide();
+                        }
+
+                        // Give the window manager enough time to actually shift focus.
+                        // Linux in particular needs a generous margin here.
+                        tokio::time::sleep(Duration::from_millis(200)).await;
 
                         if let Err(e) = inject_text(&transcript) {
                             log::error!("PTT: text injection failed: {}", e);
                         }
+                        return; // overlay already hidden above
                     }
                     Ok(_) => {
                         log::info!("PTT: empty transcript, nothing to inject");

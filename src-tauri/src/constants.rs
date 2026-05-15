@@ -12,7 +12,7 @@ pub const OVERLAY_H: f64 = 64.0;
 pub const OVERLAY_Y: f64 = 24.0;
 
 /// Bump this whenever a breaking change is made to VocylSettings.
-pub const SETTINGS_SCHEMA_VERSION: u32 = 2;
+pub const SETTINGS_SCHEMA_VERSION: u32 = 1;
 
 // ── Piper binary download URLs (rhasspy/piper 2023.11.14-2) ───────────────────
 

@@ -467,12 +467,18 @@ fn resample_linear(samples: &[f32], from_hz: u32, to_hz: u32) -> Vec<f32> {
 
 pub fn inject_text(text: &str) -> Result<(), String> {
     log::info!("Injecting transcript ({} chars) into active window", text.len());
+
     #[cfg(target_os = "windows")]
     {
         use arboard::Clipboard;
         use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 
         let mut clipboard = Clipboard::new().map_err(|e| format!("Clipboard error: {e}"))?;
+
+        // Save whatever was on the clipboard so we can restore it afterwards.
+        let saved = clipboard.get_text().ok();
+        log::debug!("STT: saved clipboard ({} chars)", saved.as_deref().unwrap_or("").len());
+
         clipboard.set_text(text).map_err(|e| {
             log::error!("Failed to copy transcript to clipboard: {}", e);
             format!("Failed to copy transcript to clipboard: {e}")
@@ -487,21 +493,46 @@ pub fn inject_text(text: &str) -> Result<(), String> {
         enigo.key(Key::Control, Direction::Release)
             .map_err(|e| format!("Key injection failed: {e:?}"))?;
 
+        // Wait for the target application to finish reading the clipboard.
+        std::thread::sleep(std::time::Duration::from_millis(150));
+
+        // Restore the user's original clipboard content.
+        if let Some(ref original) = saved {
+            if let Err(e) = clipboard.set_text(original.as_str()) {
+                log::warn!("STT: failed to restore clipboard: {}", e);
+            } else {
+                log::debug!("STT: clipboard restored");
+            }
+        }
+
         log::info!("Text injected via clipboard paste");
         return Ok(());
     }
 
     // Linux/X11: enigo.text() uses XSendEvent which most apps ignore.
-    // Clipboard + Ctrl+V is reliable across all X11 apps.
+    // Clipboard + Ctrl+V is reliable across all X11 / Wayland (XWayland) apps.
+    //
+    // IMPORTANT LINUX SUBTLETY: arboard implements X11 clipboard ownership with
+    // a background thread that responds to SelectionRequest events from the
+    // pasting application. Dropping the Clipboard object kills that thread, so
+    // we must keep it alive until the target app has fully read the selection.
     #[cfg(target_os = "linux")]
     {
         use arboard::Clipboard;
         use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 
         let mut clipboard = Clipboard::new().map_err(|e| format!("Clipboard error: {e}"))?;
-        clipboard.set_text(text).map_err(|e| format!("Failed to copy transcript to clipboard: {e}"))?;
 
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        // Save whatever was on the clipboard.
+        let saved = clipboard.get_text().ok();
+        log::debug!("STT: saved clipboard ({} chars)", saved.as_deref().unwrap_or("").len());
+
+        clipboard.set_text(text)
+            .map_err(|e| format!("Failed to copy transcript to clipboard: {e}"))?;
+
+        // Give arboard's background thread time to acquire X11 selection ownership
+        // before we send the key event.
+        std::thread::sleep(std::time::Duration::from_millis(100));
 
         let mut enigo = Enigo::new(&Settings::default())
             .map_err(|e| format!("Failed to create input injector: {e:?}"))?;
@@ -512,18 +543,65 @@ pub fn inject_text(text: &str) -> Result<(), String> {
         enigo.key(Key::Control, Direction::Release)
             .map_err(|e| format!("Key injection failed: {e:?}"))?;
 
+        // Keep the Clipboard (and therefore the X11 selection) alive until the
+        // target application has had time to read it.
+        std::thread::sleep(std::time::Duration::from_millis(250));
+
+        // Restore original clipboard content.
+        if let Some(ref original) = saved {
+            if let Err(e) = clipboard.set_text(original.as_str()) {
+                log::warn!("STT: failed to restore clipboard: {}", e);
+            } else {
+                // Give arboard time to take ownership with the restored text.
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                log::debug!("STT: clipboard restored");
+            }
+        }
+
+        log::info!("Text injected via clipboard paste");
         return Ok(());
     }
 
     #[cfg(target_os = "macos")]
     {
-        use enigo::{Enigo, Keyboard, Settings};
+        use arboard::Clipboard;
+        use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+
+        let mut clipboard = Clipboard::new().map_err(|e| format!("Clipboard error: {e}"))?;
+
+        // Save whatever was on the clipboard.
+        let saved = clipboard.get_text().ok();
+        log::debug!("STT: saved clipboard ({} chars)", saved.as_deref().unwrap_or("").len());
+
+        clipboard.set_text(text)
+            .map_err(|e| format!("Failed to copy transcript to clipboard: {e}"))?;
+
+        // Small settle delay before sending keys.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
         let mut enigo = Enigo::new(&Settings::default())
             .map_err(|e| format!("Failed to create input injector: {e:?}"))?;
-        enigo
-            .text(text)
-            .map_err(|e| format!("Text injection failed: {e:?}"))?;
-        log::info!("Text injected via enigo");
+        // macOS uses Cmd+V for paste.
+        enigo.key(Key::Meta, Direction::Press)
+            .map_err(|e| format!("Key injection failed: {e:?}"))?;
+        enigo.key(Key::Unicode('v'), Direction::Click)
+            .map_err(|e| format!("Key injection failed: {e:?}"))?;
+        enigo.key(Key::Meta, Direction::Release)
+            .map_err(|e| format!("Key injection failed: {e:?}"))?;
+
+        // Wait for the paste to land before restoring.
+        std::thread::sleep(std::time::Duration::from_millis(150));
+
+        // Restore original clipboard content.
+        if let Some(ref original) = saved {
+            if let Err(e) = clipboard.set_text(original.as_str()) {
+                log::warn!("STT: failed to restore clipboard: {}", e);
+            } else {
+                log::debug!("STT: clipboard restored");
+            }
+        }
+
+        log::info!("Text injected via clipboard paste (Cmd+V)");
         Ok(())
     }
 }

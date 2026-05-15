@@ -2,6 +2,7 @@ import { StrictMode, useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { listen } from '@tauri-apps/api/event';
 import './Global.css';
+import './Overlay.css';
 import OverlayIndicator, { type OverlayState } from '@components/OverlayIndicator';
 import ErrorBoundary from '@components/ErrorBoundary';
 import { installGlobalErrorHandlers } from './utils/globalErrorHandlers';
