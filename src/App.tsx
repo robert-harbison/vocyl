@@ -5,13 +5,17 @@ import SetupScreen from '@screens/SetupScreen';
 import SettingsScreen from '@screens/SettingsScreen';
 import Loader from '@components/Loader';
 import Toast from '@components/Toast';
+import { logger } from '@services/logService';
 
 function App() {
 	const { loading, exists } = useSettingsContext();
 	const [showDuplicateWarning, setShowDuplicateWarning] = useState(false);
 
 	useEffect(() => {
+		logger.info('App: UI initialised');
+
 		const unlisten = listen('single-instance-attempted', () => {
+			logger.warn('App: duplicate instance launch attempted');
 			setShowDuplicateWarning(true);
 		});
 		return () => {

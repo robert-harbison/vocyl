@@ -84,21 +84,27 @@ pub fn load_settings_internal<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
 ) -> Result<VocylSettings, String> {
     let path = settings_path(app)?;
-    let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&content).map_err(|e| e.to_string())
+    log::debug!("Loading settings from {}", path.display());
+    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let settings = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    log::info!("Settings loaded successfully from {}", path.display());
+    Ok(settings)
 }
 
 // ── Tauri commands ────────────────────────────────────────────────────────────
 
 #[tauri::command]
 pub fn settings_exist<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> bool {
-    settings_path(&app).map(|p| p.exists()).unwrap_or(false)
+    let exists = settings_path(&app).map(|p| p.exists()).unwrap_or(false);
+    log::debug!("settings_exist → {}", exists);
+    exists
 }
 
 #[tauri::command]
 pub fn load_settings<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
 ) -> Result<VocylSettings, String> {
+    log::info!("load_settings invoked");
     load_settings_internal(&app)
 }
 
@@ -108,11 +114,13 @@ pub fn save_settings<R: tauri::Runtime>(
     settings: VocylSettings,
 ) -> Result<(), String> {
     let path = settings_path(&app)?;
+    log::info!("Saving settings to {}", path.display());
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
-    std::fs::write(path, json).map_err(|e| e.to_string())?;
+    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    log::info!("Settings saved successfully");
 
     // Update in-memory cache
     if let Some(cache) = app.try_state::<SettingsCache>() {

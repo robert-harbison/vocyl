@@ -12,4 +12,32 @@ Settings are stored in a JSON file under the OS application-config directory:
 | **macOS**   | `~/Library/Application Support/com.sparkinex.vocyl/settings.json` |
 | **Linux**   | `~/.config/com.sparkinex.vocyl/settings.json`                     |
 
-Additional application data (e.g. cached files) will be stored in the same directory alongside `settings.json`.
+Downloaded models and runtime binaries are stored in the application data directory:
+
+| Platform    | Path                                                 |
+| ----------- | ---------------------------------------------------- |
+| **Windows** | `%APPDATA%\com.sparkinex.vocyl\`                     |
+| **macOS**   | `~/Library/Application Support/com.sparkinex.vocyl/` |
+| **Linux**   | `~/.local/share/com.sparkinex.vocyl/`                |
+
+Subdirectories within the data folder:
+
+| Path                | Contents                                               |
+| ------------------- | ------------------------------------------------------ |
+| `models/tts/`       | TTS voice models (Piper `.onnx` files, Kokoro package) |
+| `models/stt/`       | STT models (`ggml-*.bin` Whisper model files)          |
+| `binaries/piper/`   | Piper TTS runtime executable                           |
+| `binaries/whisper/` | Whisper CLI executable (Windows only)                  |
+
+## Logs
+
+Application logs are written to a rotating log file in the OS application-log directory.
+Both Rust backend and JavaScript frontend messages are written to the same file.
+
+| Platform    | Path                                                |
+| ----------- | --------------------------------------------------- |
+| **Windows** | `%LOCALAPPDATA%\com.sparkinex.vocyl\logs\vocyl.log` |
+| **macOS**   | `~/Library/Logs/vocyl/vocyl.log`                    |
+| **Linux**   | `~/.local/share/com.sparkinex.vocyl/logs/vocyl.log` |
+
+Log level is `INFO` by default. The log file is automatically rotated by `tauri-plugin-log`.

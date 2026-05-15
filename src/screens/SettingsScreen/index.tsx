@@ -16,6 +16,7 @@ import { appService } from '@services/appService';
 import { audioService, type AudioDevice } from '@services/audioService';
 import { modelService } from '@services/modelService';
 import { settingsService } from '@services/settingsService';
+import { logger } from '@services/logService';
 import { KOKORO_VOICES, PIPER_VOICES, STT_MODELS, type ModelFile } from '@/constants/models';
 
 // ── Local types ───────────────────────────────────────────────────────────────
@@ -83,20 +84,24 @@ function ModelRow({
 	const progress = activeFile ? (dlStates[`${dir}/${activeFile.filename}`] as number) : 0;
 
 	const handleDownload = useCallback(async () => {
+		logger.info(`ModelRow: downloading ${dir}/${files.map((f) => f.filename).join(', ')}`);
 		for (const file of files) {
 			await modelService.downloadFile(dir, file.filename, file.url);
 		}
+		logger.info(`ModelRow: download complete for ${dir}/${id}`);
 		onRefresh(dir);
-	}, [files, dir, onRefresh]);
+	}, [files, dir, onRefresh, id]);
 
 	const handleDelete = useCallback(async () => {
+		logger.info(`ModelRow: deleting ${dir}/${id}`);
 		for (const file of files) {
 			if (downloadedFiles.includes(file.filename)) {
 				await modelService.deleteFile(dir, file.filename);
 			}
 		}
+		logger.info(`ModelRow: delete complete for ${dir}/${id}`);
 		onRefresh(dir);
-	}, [files, dir, downloadedFiles, onRefresh]);
+	}, [files, dir, downloadedFiles, onRefresh, id]);
 
 	return (
 		<div className="flex items-center gap-3 px-4 py-2.5">
@@ -249,6 +254,7 @@ export default function SettingsScreen() {
 	// ── Data loading ──────────────────────────────────────────────────────────
 
 	const refreshFiles = useCallback(async (dir?: 'tts' | 'stt' | 'both') => {
+		logger.debug(`SettingsScreen: refreshing files for dir=${dir ?? 'both'}`);
 		if (!dir || dir === 'tts' || dir === 'both') {
 			const files = await modelService.listDownloadedFiles('tts');
 			setTtsFiles(files);
@@ -260,11 +266,15 @@ export default function SettingsScreen() {
 	}, []);
 
 	const refreshBinaries = useCallback(async () => {
+		logger.debug('SettingsScreen: checking installed binaries');
 		const [piper, whisper, kokoro] = await Promise.all([
 			modelService.isPiperInstalled(),
 			modelService.isWhisperInstalled(),
 			modelService.isKokoroInstalled(),
 		]);
+		logger.info(
+			`SettingsScreen: binaries — piper=${String(piper)} whisper=${String(whisper)} kokoro=${String(kokoro)}`,
+		);
 		setPiperInstalled(piper);
 		setWhisperInstalled(whisper);
 		setKokoroInstalled(kokoro);
@@ -272,14 +282,19 @@ export default function SettingsScreen() {
 
 	useEffect(() => {
 		void (async () => {
+			logger.info('SettingsScreen: loading devices and model state');
 			const [inputs, outputs] = await Promise.all([
 				audioService.listInputDevices(),
 				audioService.listOutputDevices(),
 			]);
+			logger.info(
+				`SettingsScreen: ${inputs.length} input device(s), ${outputs.length} output device(s)`,
+			);
 			setInputDevices(inputs);
 			setOutputDevices(outputs);
 
 			await Promise.all([refreshFiles('both'), refreshBinaries()]);
+			logger.info('SettingsScreen: initial load complete');
 		})();
 	}, [refreshFiles, refreshBinaries]);
 
@@ -290,11 +305,13 @@ export default function SettingsScreen() {
 
 		listen<DownloadProgressEvent>('download-progress', (e) => {
 			const key = `${e.payload.dir}/${e.payload.filename}`;
+			logger.debug(`Download progress: ${key} ${e.payload.progress}%`);
 			setDlStates((prev) => ({ ...prev, [key]: e.payload.progress }));
 		}).then((fn) => unsubs.push(fn));
 
 		listen<DownloadCompleteEvent>('download-complete', (e) => {
 			const key = `${e.payload.dir}/${e.payload.filename}`;
+			logger.info(`Download complete: ${key}`);
 			setDlStates((prev) => {
 				const next = { ...prev };
 				delete next[key];
@@ -311,6 +328,7 @@ export default function SettingsScreen() {
 	// ── Submit ────────────────────────────────────────────────────────────────
 
 	const onSubmit = async (data: FormValues) => {
+		logger.info('SettingsScreen: saving settings form');
 		await saveSettings({
 			schemaVersion: SETTINGS_SCHEMA_VERSION,
 			inputDeviceId: data.inputDeviceId === '' ? null : data.inputDeviceId,
@@ -323,6 +341,9 @@ export default function SettingsScreen() {
 			activeSttModel: data.activeSttModel,
 		});
 		await settingsService.updateShortcuts(data.pttShortcut, data.ttsShortcut);
+		logger.info(
+			`SettingsScreen: settings saved — engine=${data.ttsEngine} PTT='${data.pttShortcut}' TTS='${data.ttsShortcut}'`,
+		);
 		setSaved(true);
 		setTimeout(() => setSaved(false), 3000);
 	};

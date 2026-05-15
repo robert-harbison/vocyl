@@ -3,14 +3,16 @@ use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 /// Opens the settings window. If it is already open, brings it to the front.
 pub fn toggle_settings<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
+        log::info!("Settings window already open — focusing");
         // On Linux, overlay show/hide cycles can leave the window in a hidden
         // state (the handle still exists in Tauri's registry but the window is
         // withdrawn). show() must come before set_focus() to make it visible.
         let _ = window.show();
         let _ = window.set_focus();
     } else {
+        log::info!("Opening settings window");
         if let Err(e) = open_settings_window(app) {
-            eprintln!("[vocyl] failed to open settings window: {e}");
+            log::error!("Failed to open settings window: {}", e);
         }
     }
 }
@@ -20,6 +22,7 @@ pub fn toggle_settings<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 pub fn open_settings_window<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    log::info!("Creating settings window");
     let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
         .title("Vocyl")
         .inner_size(800.0, 600.0)
@@ -29,5 +32,6 @@ pub fn open_settings_window<R: tauri::Runtime>(
         .skip_taskbar(true)
         .build()?;
     let _ = window.set_focus();
+    log::info!("Settings window created and focused");
     Ok(())
 }

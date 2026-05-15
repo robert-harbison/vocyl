@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { DEFAULT_SETTINGS, type VocylSettings } from '@models/settings';
 import { settingsService } from '@services/settingsService';
+import { logger } from '@services/logService';
 
 interface SettingsContextValue {
 	settings: VocylSettings;
@@ -21,15 +22,20 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
 	useEffect(() => {
 		async function init() {
+			logger.info('SettingsContext: initialising');
 			try {
 				const hasSettings = await settingsService.exists();
+				logger.info(`SettingsContext: settings exist = ${String(hasSettings)}`);
 				setExists(hasSettings);
 				if (hasSettings) {
 					const loaded = await settingsService.load();
+					logger.info('SettingsContext: settings loaded successfully');
 					setSettings(loaded);
 				}
 			} catch (err) {
-				setError(err instanceof Error ? err.message : String(err));
+				const msg = err instanceof Error ? err.message : String(err);
+				logger.error(`SettingsContext: init error — ${msg}`);
+				setError(msg);
 			} finally {
 				setLoading(false);
 			}
@@ -38,9 +44,17 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 	}, []);
 
 	const saveSettings = async (next: VocylSettings): Promise<void> => {
-		await settingsService.save(next);
-		setSettings(next);
-		setExists(true);
+		logger.info('SettingsContext: saving settings');
+		try {
+			await settingsService.save(next);
+			setSettings(next);
+			setExists(true);
+			logger.info('SettingsContext: settings saved successfully');
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			logger.error(`SettingsContext: save error — ${msg}`);
+			throw err;
+		}
 	};
 
 	return (

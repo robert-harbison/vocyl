@@ -9,16 +9,18 @@ pub struct AudioDevice {
 
 #[tauri::command]
 pub fn list_input_devices() -> Result<Vec<AudioDevice>, String> {
+    log::info!("Enumerating input audio devices");
     // On Linux, prefer PipeWire/PulseAudio enumeration for human-readable names.
     #[cfg(target_os = "linux")]
     if let Some(devices) = pactl_list_devices(true) {
+        log::info!("Found {} input device(s) via pactl", devices.len());
         return Ok(devices);
     }
 
     let host = cpal::default_host();
     let devices = host.input_devices().map_err(|e| e.to_string())?;
 
-    Ok(devices
+    let result: Vec<AudioDevice> = devices
         .filter_map(|d| {
             let id = d.name().ok()?;
             if !is_useful_alsa_device(&id) {
@@ -27,21 +29,26 @@ pub fn list_input_devices() -> Result<Vec<AudioDevice>, String> {
             let name = friendly_alsa_name(&id);
             Some(AudioDevice { id, name })
         })
-        .collect())
+        .collect();
+
+    log::info!("Found {} input device(s)", result.len());
+    Ok(result)
 }
 
 #[tauri::command]
 pub fn list_output_devices() -> Result<Vec<AudioDevice>, String> {
+    log::info!("Enumerating output audio devices");
     // On Linux, prefer PipeWire/PulseAudio enumeration for human-readable names.
     #[cfg(target_os = "linux")]
     if let Some(devices) = pactl_list_devices(false) {
+        log::info!("Found {} output device(s) via pactl", devices.len());
         return Ok(devices);
     }
 
     let host = cpal::default_host();
     let devices = host.output_devices().map_err(|e| e.to_string())?;
 
-    Ok(devices
+    let result: Vec<AudioDevice> = devices
         .filter_map(|d| {
             let id = d.name().ok()?;
             if !is_useful_alsa_device(&id) {
@@ -50,7 +57,10 @@ pub fn list_output_devices() -> Result<Vec<AudioDevice>, String> {
             let name = friendly_alsa_name(&id);
             Some(AudioDevice { id, name })
         })
-        .collect())
+        .collect();
+
+    log::info!("Found {} output device(s)", result.len());
+    Ok(result)
 }
 
 // ── Linux / PipeWire / PulseAudio ─────────────────────────────────────────────

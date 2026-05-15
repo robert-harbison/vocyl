@@ -50,6 +50,7 @@ pub fn start_recording<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     device_name: Option<String>,
 ) {
+    log::info!("STT: starting recording (device={:?})", device_name);
     let is_recording = app.state::<SttState>().is_recording.clone();
     let samples = app.state::<SttState>().samples.clone();
     let sample_rate_cell = app.state::<SttState>().sample_rate.clone();
@@ -66,22 +67,51 @@ pub fn start_recording<R: tauri::Runtime>(
                     .ok()
                     .and_then(|mut devices| devices.find(|d| d.name().ok().as_deref() == Some(name)));
                 match found {
-                    Some(d) => d,
-                    None => match host.default_input_device() {
-                        Some(d) => d,
-                        None => { emit_overlay_state(&app_handle, "error"); return; }
-                    },
+                    Some(d) => {
+                        log::info!("STT: using requested input device '{}'", name);
+                        d
+                    }
+                    None => {
+                        log::warn!("STT: requested device '{}' not found, falling back to default", name);
+                        match host.default_input_device() {
+                            Some(d) => d,
+                            None => {
+                                log::error!("STT: no input device available");
+                                emit_overlay_state(&app_handle, "error");
+                                return;
+                            }
+                        }
+                    }
                 }
             }
             None => match host.default_input_device() {
-                Some(d) => d,
-                None => { emit_overlay_state(&app_handle, "error"); return; }
+                Some(d) => {
+                    log::info!("STT: using default input device");
+                    d
+                }
+                None => {
+                    log::error!("STT: no default input device found");
+                    emit_overlay_state(&app_handle, "error");
+                    return;
+                }
             },
         };
 
         let config = match device.default_input_config() {
-            Ok(c) => c,
-            Err(_) => { emit_overlay_state(&app_handle, "error"); return; }
+            Ok(c) => {
+                log::info!(
+                    "STT: input config — sample_rate={} channels={} format={:?}",
+                    c.sample_rate().0,
+                    c.channels(),
+                    c.sample_format()
+                );
+                c
+            }
+            Err(e) => {
+                log::error!("STT: failed to get input config: {}", e);
+                emit_overlay_state(&app_handle, "error");
+                return;
+            }
         };
 
         *sample_rate_cell.lock().unwrap() = config.sample_rate().0;
@@ -98,7 +128,7 @@ pub fn start_recording<R: tauri::Runtime>(
         let is_rec_i16 = is_recording.clone();
         let is_rec_loop = is_recording.clone();
 
-        let err_fn = |e: cpal::StreamError| eprintln!("[vocyl] audio stream error: {e:?}");
+        let err_fn = |e: cpal::StreamError| log::error!("STT: audio stream error: {:?}", e);
 
         let stream = match sample_fmt {
             SampleFormat::F32 => device.build_input_stream(
@@ -123,23 +153,29 @@ pub fn start_recording<R: tauri::Runtime>(
                 err_fn,
                 None,
             ),
-            _ => { emit_overlay_state(&app_handle, "error"); return; }
+            _ => {
+                log::error!("STT: unsupported sample format {:?}", sample_fmt);
+                emit_overlay_state(&app_handle, "error");
+                return;
+            }
         };
 
         let stream = match stream {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("[vocyl] failed to build input stream: {e:?}");
+                log::error!("STT: failed to build input stream: {:?}", e);
                 emit_overlay_state(&app_handle, "error");
                 return;
             }
         };
 
         if stream.play().is_err() {
+            log::error!("STT: failed to start audio stream");
             emit_overlay_state(&app_handle, "error");
             return;
         }
 
+        log::info!("STT: recording started");
         emit_overlay_state(&app_handle, "listening");
 
         while is_rec_loop.load(Ordering::SeqCst) {
@@ -147,6 +183,7 @@ pub fn start_recording<R: tauri::Runtime>(
         }
 
         drop(stream);
+        log::info!("STT: recording stopped");
     });
 }
 
@@ -158,6 +195,7 @@ pub fn start_recording<R: tauri::Runtime>(
 pub async fn stop_and_transcribe<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
 ) -> Result<String, String> {
+    log::info!("STT: stopping recording and starting transcription");
     app.state::<SttState>()
         .is_recording
         .store(false, Ordering::SeqCst);
@@ -169,7 +207,15 @@ pub async fn stop_and_transcribe<R: tauri::Runtime>(
     let sample_rate = *app.state::<SttState>().sample_rate.lock().unwrap();
     let channels = *app.state::<SttState>().channels.lock().unwrap();
 
+    log::info!(
+        "STT: captured {} samples at {} Hz ({} channel(s))",
+        samples.len(),
+        sample_rate,
+        channels
+    );
+
     if samples.is_empty() {
+        log::info!("STT: no samples captured, skipping transcription");
         return Ok(String::new());
     }
 
@@ -180,26 +226,43 @@ pub async fn stop_and_transcribe<R: tauri::Runtime>(
         .unwrap()
         .active_stt_model
         .clone()
-        .ok_or("No STT model selected. Choose one in Settings → Speech-to-Text.")?;
+        .ok_or_else(|| {
+            log::warn!("STT: no model selected");
+            "No STT model selected. Choose one in Settings → Speech-to-Text.".to_string()
+        })?;
 
     let model_path = model_dir(app, "stt")?.join(format!("ggml-{model_size}.bin"));
     if !model_path.exists() {
+        log::error!("STT: model file not found: {}", model_path.display());
         return Err(format!(
             "STT model 'ggml-{model_size}.bin' not found. Download it in Settings → Speech-to-Text."
         ));
     }
 
+    log::info!("STT: transcribing with model '{}'", model_size);
+
     // ── Windows: run whisper-cli.exe subprocess ───────────────────────────────
     #[cfg(target_os = "windows")]
     {
         let whisper_bin = get_whisper_bin(app)?;
-        return transcribe_subprocess(whisper_bin, model_path, samples, sample_rate, channels)
-            .await;
+        let result = transcribe_subprocess(whisper_bin, model_path, samples, sample_rate, channels).await;
+        match &result {
+            Ok(text) => log::info!("STT: transcription complete ({} chars)", text.len()),
+            Err(e) => log::error!("STT: transcription failed: {}", e),
+        }
+        return result;
     }
 
     // ── Linux / macOS: native whisper-rs compiled into the binary ─────────────
     #[cfg(not(target_os = "windows"))]
-    transcribe_native(model_path, samples, sample_rate, channels).await
+    {
+        let result = transcribe_native(model_path, samples, sample_rate, channels).await;
+        match &result {
+            Ok(text) => log::info!("STT: transcription complete ({} chars)", text.len()),
+            Err(e) => log::error!("STT: transcription failed: {}", e),
+        }
+        result
+    }
 }
 
 // ── Windows subprocess path ───────────────────────────────────────────────────
@@ -224,6 +287,7 @@ async fn transcribe_subprocess(
         samples
     };
     let mut audio_16k = if sample_rate != 16_000 {
+        log::debug!("STT: resampling from {} Hz to 16 kHz", sample_rate);
         resample_linear(&mono, sample_rate, 16_000)
     } else {
         mono
@@ -237,6 +301,7 @@ async fn transcribe_subprocess(
     audio_16k.splice(0..0, pad);
 
     let wav_path = write_temp_wav(&audio_16k)?;
+    log::debug!("STT: WAV written to {}", wav_path.display());
 
     let output = tokio::process::Command::new(&whisper_bin)
         .args([
@@ -252,12 +317,16 @@ async fn transcribe_subprocess(
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run whisper: {e}"))?;
+        .map_err(|e| {
+            log::error!("STT: failed to run whisper subprocess: {}", e);
+            format!("Failed to run whisper: {e}")
+        })?;
 
     std::fs::remove_file(&wav_path).ok();
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        log::error!("STT: whisper exited non-zero: {}", stderr);
         return Err(format!("Whisper exited with error: {stderr}"));
     }
 
@@ -397,15 +466,17 @@ fn resample_linear(samples: &[f32], from_hz: u32, to_hz: u32) -> Vec<f32> {
 // ── Text injection ────────────────────────────────────────────────────────────
 
 pub fn inject_text(text: &str) -> Result<(), String> {
+    log::info!("Injecting transcript ({} chars) into active window", text.len());
     #[cfg(target_os = "windows")]
     {
-        // enigo's text() on Windows corrupts longer strings via SendInput/unicode.
-        // Clipboard + Ctrl+V is what every other Windows STT tool uses and is reliable.
         use arboard::Clipboard;
         use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 
         let mut clipboard = Clipboard::new().map_err(|e| format!("Clipboard error: {e}"))?;
-        clipboard.set_text(text).map_err(|e| format!("Failed to copy transcript to clipboard: {e}"))?;
+        clipboard.set_text(text).map_err(|e| {
+            log::error!("Failed to copy transcript to clipboard: {}", e);
+            format!("Failed to copy transcript to clipboard: {e}")
+        })?;
 
         let mut enigo = Enigo::new(&Settings::default())
             .map_err(|e| format!("Failed to create input injector: {e:?}"))?;
@@ -416,6 +487,7 @@ pub fn inject_text(text: &str) -> Result<(), String> {
         enigo.key(Key::Control, Direction::Release)
             .map_err(|e| format!("Key injection failed: {e:?}"))?;
 
+        log::info!("Text injected via clipboard paste");
         return Ok(());
     }
 
@@ -427,6 +499,7 @@ pub fn inject_text(text: &str) -> Result<(), String> {
         enigo
             .text(text)
             .map_err(|e| format!("Text injection failed: {e:?}"))?;
+        log::info!("Text injected via enigo");
         Ok(())
     }
 }
@@ -434,6 +507,7 @@ pub fn inject_text(text: &str) -> Result<(), String> {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 pub fn emit_overlay_state<R: tauri::Runtime>(app: &tauri::AppHandle<R>, state: &str) {
+    log::debug!("Overlay state → {}", state);
     if let Some(overlay) = app.get_webview_window("overlay") {
         let _ = overlay.emit("overlay-state", state);
     }

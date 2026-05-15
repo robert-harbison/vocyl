@@ -21,10 +21,22 @@ use tts::{prewarm_kokoro, TtsState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    use tauri_plugin_log::{Target, TargetKind};
+
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .targets([
+                    Target::new(TargetKind::Stdout),
+                    Target::new(TargetKind::LogDir {
+                        file_name: Some("vocyl".to_string()),
+                    }),
+                ])
+                .level(log::LevelFilter::Info)
+                .build(),
+        )
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            // A second launch was attempted — focus the existing window and
-            // notify the UI so it can display a warning to the user.
+            log::warn!("Second instance launch attempted — focusing existing window");
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();
@@ -57,9 +69,19 @@ pub fn run() {
             exit_app,
         ])
         .setup(|app| {
+            log::info!(
+                "Vocyl {} starting up on {} ({})",
+                env!("CARGO_PKG_VERSION"),
+                std::env::consts::OS,
+                std::env::consts::ARCH,
+            );
+
             // Load settings into the in-memory cache (used by shortcut handlers)
             let cached = settings::load_settings_internal(app.handle())
-                .unwrap_or_default();
+                .unwrap_or_else(|e| {
+                    log::warn!("Could not load saved settings ({}); using defaults", e);
+                    Default::default()
+                });
             app.manage(SettingsCache(Mutex::new(cached)));
 
             // STT / TTS runtime state
@@ -76,9 +98,16 @@ pub fn run() {
             // Auto-show settings on first run
             let config_dir = app.path().app_config_dir()?;
             if !config_dir.join("settings.json").exists() {
+                log::info!("No settings file found — opening setup wizard");
                 windows::open_settings_window(app.handle())?;
+            } else {
+                log::info!(
+                    "Settings loaded from {}",
+                    config_dir.join("settings.json").display()
+                );
             }
 
+            log::info!("Vocyl startup complete");
             Ok(())
         })
         .run(tauri::generate_context!())

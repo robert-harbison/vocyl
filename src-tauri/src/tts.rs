@@ -113,6 +113,7 @@ pub fn get_selected_text() -> Result<String, String> {
 /// Start speaking the given text using the engine configured in settings.
 /// Emits `overlay-state` events and hides the overlay when done.
 pub fn start_speaking<R: tauri::Runtime>(app: &tauri::AppHandle<R>, text: String) {
+    log::info!("TTS: starting synthesis ({} chars)", text.len());
     let tts = app.state::<TtsState>();
     tts.is_playing.store(true, Ordering::SeqCst);
     tts.stop_flag.store(false, Ordering::SeqCst);
@@ -129,16 +130,23 @@ pub fn start_speaking<R: tauri::Runtime>(app: &tauri::AppHandle<R>, text: String
             .unwrap()
             .clone();
 
+        log::info!("TTS: using engine '{}'", settings.tts_engine);
         let result = match settings.tts_engine.as_str() {
             "piper" => speak_piper(&app_handle, &text, &settings, stop_flag.clone()).await,
             "kokoro" => speak_kokoro(&app_handle, &text, &settings, stop_flag.clone()).await,
-            _ => Err(format!("Unknown TTS engine: {}", settings.tts_engine)),
+            _ => {
+                let msg = format!("Unknown TTS engine: {}", settings.tts_engine);
+                log::error!("TTS: {}", msg);
+                Err(msg)
+            }
         };
 
         if let Err(e) = result {
-            eprintln!("[vocyl] TTS error: {e}");
+            log::error!("TTS: synthesis error: {}", e);
             emit_overlay_state(&app_handle, "error");
             tokio::time::sleep(Duration::from_secs(2)).await;
+        } else {
+            log::info!("TTS: synthesis complete");
         }
 
         is_playing.store(false, Ordering::SeqCst);
@@ -151,6 +159,7 @@ pub fn start_speaking<R: tauri::Runtime>(app: &tauri::AppHandle<R>, text: String
 
 /// Stop ongoing TTS playback.
 pub fn stop_speaking<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    log::info!("TTS: stop requested by user");
     let tts = app.state::<TtsState>();
     tts.stop_flag.store(true, Ordering::SeqCst);
 }
@@ -162,24 +171,31 @@ pub fn prewarm_kokoro<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     std::thread::spawn(move || {
         let settings = app.state::<SettingsCache>().0.lock().unwrap().clone();
         if settings.tts_engine != "kokoro" {
+            log::debug!("TTS: pre-warm skipped (engine is '{}')", settings.tts_engine);
             return;
         }
         let model_dir = match get_kokoro_model_dir(&app) {
             Ok(d) => d,
-            Err(_) => return, // model not installed yet — skip
+            Err(e) => {
+                log::debug!("TTS: pre-warm skipped — Kokoro not yet installed: {}", e);
+                return;
+            }
         };
         let kokoro_arc = app.state::<TtsState>().kokoro.clone();
         let mut guard = kokoro_arc.lock().unwrap();
         if guard.is_some() {
-            return; // already loaded
+            log::debug!("TTS: Kokoro already loaded, skipping pre-warm");
+            return;
         }
-        eprintln!("[vocyl] Pre-warming Kokoro model…");
+        log::info!("TTS: pre-warming Kokoro model…");
         let num_threads = std::thread::available_parallelism()
             .map(|n| n.get().min(8))
             .unwrap_or(4) as i32;
         if let Ok(tts) = create_kokoro_engine(&model_dir, num_threads) {
             *guard = Some(KokoroHandle { tts, model_dir });
-            eprintln!("[vocyl] Kokoro pre-warm complete.");
+            log::info!("TTS: Kokoro pre-warm complete");
+        } else {
+            log::warn!("TTS: Kokoro pre-warm failed — model may load on first use instead");
         }
     });
 }
@@ -197,12 +213,17 @@ async fn speak_piper<R: tauri::Runtime>(
     let voice_id = settings
         .active_tts_model_id
         .as_deref()
-        .ok_or("No TTS voice selected. Choose one in Settings → Text-to-Speech.")?;
+        .ok_or_else(|| {
+            log::warn!("TTS: no Piper voice selected");
+            "No TTS voice selected. Choose one in Settings → Text-to-Speech.".to_string()
+        })?;
 
+    log::info!("TTS: Piper synthesis with voice '{}'", voice_id);
     let model_filename = format!("{voice_id}.onnx");
     let model_path = model_dir(app, "tts")?.join(&model_filename);
 
     if !model_path.exists() {
+        log::error!("TTS: Piper model file not found: {}", model_path.display());
         return Err(format!(
             "Piper voice model '{model_filename}' not found. Download it in Settings → Text-to-Speech."
         ));
@@ -230,7 +251,10 @@ async fn speak_piper<R: tauri::Runtime>(
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .map_err(|e| format!("Failed to start piper: {e}"))?;
+        .map_err(|e| {
+            log::error!("TTS: failed to start piper process: {}", e);
+            format!("Failed to start piper: {e}")
+        })?;
 
     if let Some(mut stdin) = child.stdin.take() {
         use tokio::io::AsyncWriteExt;
@@ -242,12 +266,15 @@ async fn speak_piper<R: tauri::Runtime>(
     std::fs::remove_file(&tmp_txt).ok();
 
     if !status.success() {
+        log::error!("TTS: Piper synthesis failed (exit code {:?})", status.code());
         return Err("Piper synthesis failed".to_string());
     }
     if !tmp_wav.exists() {
+        log::error!("TTS: Piper did not produce audio output");
         return Err("Piper did not produce audio output".to_string());
     }
 
+    log::info!("TTS: Piper synthesis done, playing audio");
     let output_device = settings.output_device_id.clone();
     let wav_path = tmp_wav.clone();
     tokio::task::spawn_blocking(move || {
@@ -381,13 +408,18 @@ fn create_kokoro_engine(
         if let Some(tts) = sherpa_onnx::OfflineTts::create(
             &build_kokoro_config(model_dir, num_threads, "directml"),
         ) {
+            log::info!("TTS: Kokoro engine initialised on DirectML (GPU)");
             return Ok(tts);
         }
-        eprintln!("[vocyl] DirectML unavailable, falling back to CPU.");
+        log::warn!("TTS: DirectML unavailable, falling back to CPU");
     }
 
     sherpa_onnx::OfflineTts::create(&build_kokoro_config(model_dir, num_threads, "cpu"))
-        .ok_or_else(|| "Failed to initialise Kokoro TTS engine. Check the model files.".to_string())
+        .ok_or_else(|| {
+            let msg = "Failed to initialise Kokoro TTS engine. Check the model files.".to_string();
+            log::error!("TTS: {}", msg);
+            msg
+        })
 }
 
 async fn speak_kokoro<R: tauri::Runtime>(
@@ -397,7 +429,9 @@ async fn speak_kokoro<R: tauri::Runtime>(
     stop_flag: Arc<AtomicBool>,
 ) -> Result<(), String> {
     let model_dir = get_kokoro_model_dir(app)?;
-    let sid = kokoro_sid(settings.tts_voice.as_deref().unwrap_or("af"));
+    let voice = settings.tts_voice.as_deref().unwrap_or("af");
+    let sid = kokoro_sid(voice);
+    log::info!("TTS: Kokoro synthesis with voice '{}' (sid={})", voice, sid);
     let output_device = settings.output_device_id.clone();
     let kokoro_arc = app.state::<TtsState>().kokoro.clone();
 
@@ -407,8 +441,10 @@ async fn speak_kokoro<R: tauri::Runtime>(
 
     let sentences = split_sentences(text);
     if sentences.is_empty() {
+        log::info!("TTS: text produced no sentences after splitting, nothing to speak");
         return Ok(());
     }
+    log::info!("TTS: synthesising {} sentence(s)", sentences.len());
 
     // Channel capacity 2: synthesizer stays one sentence ahead of the player.
     let (tx, rx) = tokio::sync::mpsc::channel::<(Vec<f32>, u32)>(2);
@@ -417,8 +453,6 @@ async fn speak_kokoro<R: tauri::Runtime>(
     let stop_play = stop_flag.clone();
 
     // ── Synthesizer ───────────────────────────────────────────────────────────
-    // Runs on the blocking thread pool. Ensures the model is loaded, then
-    // synthesizes each sentence and sends (samples, sample_rate) to the player.
     let synth_task = tokio::task::spawn_blocking(move || -> Result<(), String> {
         // Load / validate cached model (mutex held only for this block).
         {
@@ -428,10 +462,10 @@ async fn speak_kokoro<R: tauri::Runtime>(
                 .map(|h| h.model_dir != model_dir)
                 .unwrap_or(true);
             if needs_reload {
-                eprintln!("[vocyl] Loading Kokoro model (one-time cost)…");
+                log::info!("TTS: loading Kokoro model (one-time cost)…");
                 let tts = create_kokoro_engine(&model_dir, num_threads)?;
                 *guard = Some(KokoroHandle { tts, model_dir: model_dir.clone() });
-                eprintln!("[vocyl] Kokoro model loaded and cached.");
+                log::info!("TTS: Kokoro model loaded and cached");
             }
         }
 
@@ -443,11 +477,10 @@ async fn speak_kokoro<R: tauri::Runtime>(
 
         for sentence in sentences {
             if stop_synth.load(Ordering::SeqCst) {
+                log::info!("TTS: synthesis cancelled by stop flag");
                 break;
             }
 
-            // Lock only during inference so the mutex isn't held while the
-            // channel send blocks (waiting for the player to consume).
             let audio_data = {
                 let guard = kokoro_arc.lock().unwrap();
                 let stop_cb = stop_synth.clone();
@@ -458,7 +491,6 @@ async fn speak_kokoro<R: tauri::Runtime>(
                     .generate_with_config(
                         &sentence,
                         &gen_config,
-                        // Callback lets the user cancel synthesis mid-sentence.
                         Some(move |_samples: &[f32], _progress: f32| -> bool {
                             !stop_cb.load(Ordering::SeqCst)
                         }),
@@ -468,7 +500,8 @@ async fn speak_kokoro<R: tauri::Runtime>(
 
             if let Some(data) = audio_data {
                 if tx.blocking_send(data).is_err() {
-                    break; // player dropped — user stopped
+                    log::info!("TTS: player channel closed, stopping synthesis");
+                    break;
                 }
             }
         }
@@ -476,20 +509,27 @@ async fn speak_kokoro<R: tauri::Runtime>(
     });
 
     // ── Player ────────────────────────────────────────────────────────────────
-    // Opens the audio device once, then appends each sentence to the sink as
-    // it arrives — rodio plays them gaplessly in sequence.
     let play_task = tokio::task::spawn_blocking(move || -> Result<(), String> {
         use cpal::traits::{DeviceTrait, HostTrait};
         use rodio::buffer::SamplesBuffer;
 
         let host = cpal::default_host();
         let device = match output_device.as_deref() {
-            Some(name) => host
-                .output_devices()
-                .map_err(|e| e.to_string())?
-                .find(|d| d.name().ok().as_deref() == Some(name))
-                .unwrap_or_else(|| host.default_output_device().expect("no output device")),
-            None => host.default_output_device().ok_or("No output device found")?,
+            Some(name) => {
+                log::debug!("TTS: using output device '{}'", name);
+                host
+                    .output_devices()
+                    .map_err(|e| e.to_string())?
+                    .find(|d| d.name().ok().as_deref() == Some(name))
+                    .unwrap_or_else(|| {
+                        log::warn!("TTS: output device '{}' not found, using default", name);
+                        host.default_output_device().expect("no output device")
+                    })
+            }
+            None => {
+                log::debug!("TTS: using default output device");
+                host.default_output_device().ok_or("No output device found")?
+            }
         };
 
         let (_stream, handle) =
@@ -499,13 +539,12 @@ async fn speak_kokoro<R: tauri::Runtime>(
         let mut rx = rx;
         while let Some((samples, sample_rate)) = rx.blocking_recv() {
             if stop_play.load(Ordering::SeqCst) {
+                log::info!("TTS: playback cancelled by stop flag");
                 break;
             }
-            // Append each sentence — rodio queues them for seamless playback.
             sink.append(SamplesBuffer::new(1, sample_rate, samples));
         }
 
-        // Drain whatever is still queued in the sink.
         while !sink.empty() && !stop_play.load(Ordering::SeqCst) {
             std::thread::sleep(Duration::from_millis(50));
         }
@@ -535,7 +574,10 @@ fn play_wav(
             .output_devices()
             .map_err(|e| e.to_string())?
             .find(|d| d.name().ok().as_deref() == Some(name))
-            .unwrap_or_else(|| host.default_output_device().expect("no output device")),
+            .unwrap_or_else(|| {
+                log::warn!("TTS: output device '{}' not found for playback, using default", name);
+                host.default_output_device().expect("no output device")
+            }),
         None => host.default_output_device().ok_or("No output device found")?,
     };
 

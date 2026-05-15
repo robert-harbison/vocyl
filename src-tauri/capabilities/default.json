@@ -3,5 +3,5 @@
 	"identifier": "default",
 	"description": "Capability for the main and overlay windows",
 	"windows": ["main", "overlay"],
-	"permissions": ["core:default", "opener:default"]
+	"permissions": ["core:default", "opener:default", "log:default"]
 }

@@ -7,6 +7,7 @@ use crate::windows::toggle_settings;
 
 /// Builds the system tray icon with its context menu.
 pub fn setup<R: tauri::Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
+    log::info!("Setting up system tray");
     let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit Vocyl", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&settings_item, &quit_item])?;
@@ -17,22 +18,31 @@ pub fn setup<R: tauri::Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn s
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
-            "settings" => toggle_settings(app),
-            "quit" => app.exit(0),
-            _ => {}
+            "settings" => {
+                log::info!("Tray: 'Settings' clicked");
+                toggle_settings(app);
+            }
+            "quit" => {
+                log::info!("Tray: 'Quit Vocyl' clicked");
+                app.exit(0);
+            }
+            id => {
+                log::warn!("Tray: unknown menu item '{}'", id);
+            }
         })
         .on_tray_icon_event(|tray, event| {
-            // Left-click toggles the settings window
             if let TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
                 ..
             } = event
             {
+                log::info!("Tray: left-click — toggling settings window");
                 toggle_settings(tray.app_handle());
             }
         })
         .build(app)?;
 
+    log::info!("System tray set up successfully");
     Ok(())
 }

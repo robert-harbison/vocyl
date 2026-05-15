@@ -71,12 +71,13 @@ fn ensure_executable(path: &std::path::Path) {
 
 #[tauri::command]
 pub fn list_downloaded_files(app: tauri::AppHandle, dir: String) -> Result<Vec<String>, String> {
+    log::debug!("Listing downloaded files in dir='{}'", dir);
     let path = model_dir(&app, &dir)?;
     if !path.exists() {
         return Ok(vec![]);
     }
 
-    let files = std::fs::read_dir(&path)
+    let files: Vec<String> = std::fs::read_dir(&path)
         .map_err(|e| e.to_string())?
         .filter_map(|entry| {
             let entry = entry.ok()?;
@@ -88,6 +89,7 @@ pub fn list_downloaded_files(app: tauri::AppHandle, dir: String) -> Result<Vec<S
         })
         .collect();
 
+    log::debug!("Found {} file(s) in '{}'", files.len(), dir);
     Ok(files)
 }
 
@@ -105,6 +107,7 @@ pub async fn download_file(
 
     let dest_path = dest_dir.join(&filename);
     if dest_path.exists() {
+        log::info!("File already exists, skipping download: {}/{}", dir, filename);
         let _ = app.emit(
             "download-complete",
             serde_json::json!({ "dir": &dir, "filename": &filename }),
@@ -112,6 +115,7 @@ pub async fn download_file(
         return Ok(());
     }
 
+    log::info!("Starting download: {}/{} from {}", dir, filename, url);
     let tmp_path = dest_dir.join(format!("{filename}.tmp"));
 
     let client = reqwest::Client::new();
@@ -119,9 +123,13 @@ pub async fn download_file(
         .get(&url)
         .send()
         .await
-        .map_err(|e| format!("HTTP request failed: {e}"))?;
+        .map_err(|e| {
+            log::error!("HTTP request failed for {}: {}", url, e);
+            format!("HTTP request failed: {e}")
+        })?;
 
     if !response.status().is_success() {
+        log::error!("HTTP {} for URL: {}", response.status(), url);
         return Err(format!("HTTP {}: {url}", response.status()));
     }
 
@@ -160,6 +168,12 @@ pub async fn download_file(
         .await
         .map_err(|e| e.to_string())?;
 
+    log::info!(
+        "Download complete: {}/{} ({} bytes)",
+        dir,
+        filename,
+        downloaded
+    );
     let _ = app.emit(
         "download-complete",
         serde_json::json!({ "dir": &dir, "filename": &filename }),
@@ -172,7 +186,14 @@ pub async fn download_file(
 pub fn delete_file(app: tauri::AppHandle, dir: String, filename: String) -> Result<(), String> {
     let path = model_dir(&app, &dir)?.join(&filename);
     if path.exists() {
-        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+        log::info!("Deleting file: {}/{}", dir, filename);
+        std::fs::remove_file(&path).map_err(|e| {
+            log::error!("Failed to delete {}/{}: {}", dir, filename, e);
+            e.to_string()
+        })?;
+        log::info!("Deleted: {}/{}", dir, filename);
+    } else {
+        log::debug!("delete_file: {}/{} does not exist, nothing to do", dir, filename);
     }
     Ok(())
 }
@@ -181,7 +202,9 @@ pub fn delete_file(app: tauri::AppHandle, dir: String, filename: String) -> Resu
 
 #[tauri::command]
 pub fn is_piper_installed(app: tauri::AppHandle) -> bool {
-    get_piper_bin(&app).is_ok()
+    let installed = get_piper_bin(&app).is_ok();
+    log::debug!("is_piper_installed → {}", installed);
+    installed
 }
 
 /// Windows: look for the downloaded whisper-cli.exe.
@@ -189,10 +212,10 @@ pub fn is_piper_installed(app: tauri::AppHandle) -> bool {
 #[tauri::command]
 pub fn is_whisper_installed(app: tauri::AppHandle) -> bool {
     #[cfg(target_os = "windows")]
-    { get_whisper_bin(&app).is_ok() }
+    { let installed = get_whisper_bin(&app).is_ok(); log::debug!("is_whisper_installed → {}", installed); installed }
 
     #[cfg(not(target_os = "windows"))]
-    { let _ = app; true }
+    { let _ = app; log::debug!("is_whisper_installed → true (native whisper-rs)"); true }
 }
 
 /// Returns the path to the whisper-cli executable on Windows.
@@ -231,13 +254,20 @@ pub fn get_whisper_bin<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<P
 pub async fn download_whisper(app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
+        log::info!("Starting Whisper CLI download from {}", WHISPER_WIN_URL);
         let dest = binary_dir(&app, "whisper")?;
-        download_and_extract_zip(&app, WHISPER_WIN_URL, dest, "whisper").await
+        let result = download_and_extract_zip(&app, WHISPER_WIN_URL, dest, "whisper").await;
+        if let Err(ref e) = result {
+            log::error!("Whisper CLI download failed: {}", e);
+        } else {
+            log::info!("Whisper CLI installed successfully");
+        }
+        result
     }
 
     #[cfg(not(target_os = "windows"))]
     {
-        // Built into the app — nothing to download.
+        log::info!("Whisper is built into the app on this platform — no download needed");
         let _ = app.emit(
             "download-complete",
             serde_json::json!({ "dir": "binaries", "filename": "whisper" }),
@@ -260,8 +290,10 @@ async fn download_and_extract_zip(
 
     let tmp_zip = extract_to.join("__download.zip.tmp");
 
+    log::info!("Downloading ZIP: {} → {}", url, extract_to.display());
     stream_download(app, url, &tmp_zip, "binaries", progress_label).await?;
 
+    log::info!("Extracting ZIP archive for '{}'", progress_label);
     let zip_path = tmp_zip.clone();
     let out_dir = extract_to.clone();
     tokio::task::spawn_blocking(move || -> Result<(), String> {
@@ -298,6 +330,7 @@ async fn download_and_extract_zip(
     .await
     .map_err(|e| e.to_string())??;
 
+    log::info!("ZIP extraction complete for '{}'", progress_label);
     let _ = app.emit(
         "download-complete",
         serde_json::json!({ "dir": "binaries", "filename": progress_label }),
@@ -320,8 +353,10 @@ async fn download_and_extract_targz(
 
     let tmp = extract_to.join("__download.tar.gz.tmp");
 
+    log::info!("Downloading tar.gz: {} → {}", url, extract_to.display());
     stream_download(app, url, &tmp, "binaries", progress_label).await?;
 
+    log::info!("Extracting tar.gz archive for '{}'", progress_label);
     let tmp2 = tmp.clone();
     let out_dir = extract_to.clone();
     tokio::task::spawn_blocking(move || -> Result<(), String> {
@@ -330,7 +365,6 @@ async fn download_and_extract_targz(
 
         let file = std::fs::File::open(&tmp2).map_err(|e| e.to_string())?;
         let mut archive = Archive::new(GzDecoder::new(file));
-        // tar::Archive::unpack preserves Unix permissions from the archive headers.
         archive.unpack(&out_dir).map_err(|e| e.to_string())?;
         std::fs::remove_file(&tmp2).ok();
         Ok(())
@@ -338,6 +372,7 @@ async fn download_and_extract_targz(
     .await
     .map_err(|e| e.to_string())??;
 
+    log::info!("tar.gz extraction complete for '{}'", progress_label);
     let _ = app.emit(
         "download-complete",
         serde_json::json!({ "dir": "binaries", "filename": progress_label }),
@@ -360,8 +395,10 @@ async fn download_and_extract_tarbz2(
 
     let tmp = extract_to.join("__download.tar.bz2.tmp");
 
+    log::info!("Downloading tar.bz2: {} → {}", url, extract_to.display());
     stream_download(app, url, &tmp, "binaries", progress_label).await?;
 
+    log::info!("Extracting tar.bz2 archive for '{}'", progress_label);
     let tmp2 = tmp.clone();
     let out_dir = extract_to.clone();
     tokio::task::spawn_blocking(move || -> Result<(), String> {
@@ -377,6 +414,7 @@ async fn download_and_extract_tarbz2(
     .await
     .map_err(|e| e.to_string())??;
 
+    log::info!("tar.bz2 extraction complete for '{}'", progress_label);
     let _ = app.emit(
         "download-complete",
         serde_json::json!({ "dir": "binaries", "filename": progress_label }),
@@ -388,9 +426,6 @@ async fn download_and_extract_tarbz2(
 // ── Shared HTTP download helper ───────────────────────────────────────────────
 
 /// Stream-downloads `url` to `dest`, emitting `download-progress` events.
-/// `event_dir` is included in the event payload so the frontend can match
-/// the right progress bar (e.g. `"binaries"` for executables, `"tts"` for models).
-/// Does NOT emit `download-complete` — callers do that after extraction.
 async fn stream_download(
     app: &tauri::AppHandle,
     url: &str,
@@ -403,13 +438,22 @@ async fn stream_download(
         .get(url)
         .send()
         .await
-        .map_err(|e| format!("HTTP request failed: {e}"))?;
+        .map_err(|e| {
+            log::error!("HTTP request failed for {}: {}", url, e);
+            format!("HTTP request failed: {e}")
+        })?;
 
     if !response.status().is_success() {
+        log::error!("HTTP {} downloading {}", response.status(), url);
         return Err(format!("HTTP {}: {url}", response.status()));
     }
 
     let total = response.content_length();
+    log::info!(
+        "Download started: {} ({} bytes total)",
+        progress_label,
+        total.map(|n| n.to_string()).unwrap_or_else(|| "unknown".to_string())
+    );
     let mut downloaded = 0u64;
 
     let mut file = tokio::fs::File::create(dest)
@@ -438,6 +482,7 @@ async fn stream_download(
         );
     }
 
+    log::info!("Download stream complete: {} ({} bytes)", progress_label, downloaded);
     Ok(())
 }
 
@@ -446,13 +491,16 @@ async fn stream_download(
 #[tauri::command]
 pub async fn download_piper(app: tauri::AppHandle) -> Result<(), String> {
     let url = piper_url().ok_or_else(|| {
-        format!(
+        let msg = format!(
             "Piper has no pre-built binary for {} ({}). Use Kokoro TTS instead.",
             std::env::consts::OS,
             std::env::consts::ARCH,
-        )
+        );
+        log::error!("{}", msg);
+        msg
     })?;
 
+    log::info!("Starting Piper download from {}", url);
     let dest = binary_dir(&app, "piper")?;
 
     if url.ends_with(".zip") {
@@ -462,7 +510,6 @@ pub async fn download_piper(app: tauri::AppHandle) -> Result<(), String> {
     }
 
     // On Unix, the tar archive may not have the execute bit set in its headers.
-    // Explicitly mark the binary executable so `spawn` doesn't fail with EACCES.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -475,6 +522,60 @@ pub async fn download_piper(app: tauri::AppHandle) -> Result<(), String> {
         }
     }
 
+    log::info!("Piper installed successfully");
+    Ok(())
+}
+
+// ── Kokoro model package (tar.bz2) ────────────────────────────────────────────
+
+pub fn get_kokoro_model_dir<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
+    let dir = model_dir(app, "tts")?.join("kokoro-en-v0_19");
+    if dir.join("model.onnx").exists() && dir.join("voices.bin").exists() {
+        return Ok(dir);
+    }
+    Err("Kokoro model not installed. Download it in Settings → Text-to-Speech.".to_string())
+}
+
+#[tauri::command]
+pub fn is_kokoro_installed(app: tauri::AppHandle) -> bool {
+    let installed = get_kokoro_model_dir(&app).is_ok();
+    log::debug!("is_kokoro_installed → {}", installed);
+    installed
+}
+
+#[tauri::command]
+pub async fn download_kokoro_package(app: tauri::AppHandle) -> Result<(), String> {
+    let dest = model_dir(&app, "tts")?;
+    tokio::fs::create_dir_all(&dest).await.map_err(|e| e.to_string())?;
+
+    if get_kokoro_model_dir(&app).is_ok() {
+        log::info!("Kokoro model already installed, skipping download");
+        let _ = app.emit("download-complete", serde_json::json!({ "dir": "tts", "filename": "kokoro" }));
+        return Ok(());
+    }
+
+    log::info!("Starting Kokoro package download from {}", KOKORO_PKG_URL);
+    let tmp_path = dest.join("kokoro.tar.bz2.tmp");
+    stream_download(&app, KOKORO_PKG_URL, &tmp_path, "tts", "kokoro").await?;
+
+    log::info!("Kokoro download complete, extracting archive…");
+    let dest_dir = dest.clone();
+    let tmp = tmp_path.clone();
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        use bzip2::read::BzDecoder;
+        use tar::Archive;
+
+        let file = std::fs::File::open(&tmp).map_err(|e| e.to_string())?;
+        let mut archive = Archive::new(BzDecoder::new(file));
+        archive.unpack(&dest_dir).map_err(|e| e.to_string())?;
+        std::fs::remove_file(&tmp).ok();
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    log::info!("Kokoro package installed successfully");
+    let _ = app.emit("download-complete", serde_json::json!({ "dir": "tts", "filename": "kokoro" }));
     Ok(())
 }
 
@@ -511,53 +612,6 @@ pub fn is_sherpa_tts_installed(app: tauri::AppHandle) -> bool {
     get_sherpa_tts_bin(&app).is_ok()
 }
 
-// ── Kokoro model package (tar.bz2) ────────────────────────────────────────────
-
-pub fn get_kokoro_model_dir<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
-    let dir = model_dir(app, "tts")?.join("kokoro-en-v0_19");
-    if dir.join("model.onnx").exists() && dir.join("voices.bin").exists() {
-        return Ok(dir);
-    }
-    Err("Kokoro model not installed. Download it in Settings → Text-to-Speech.".to_string())
-}
-
-#[tauri::command]
-pub fn is_kokoro_installed(app: tauri::AppHandle) -> bool {
-    get_kokoro_model_dir(&app).is_ok()
-}
-
-#[tauri::command]
-pub async fn download_kokoro_package(app: tauri::AppHandle) -> Result<(), String> {
-    let dest = model_dir(&app, "tts")?;
-    tokio::fs::create_dir_all(&dest).await.map_err(|e| e.to_string())?;
-
-    if get_kokoro_model_dir(&app).is_ok() {
-        let _ = app.emit("download-complete", serde_json::json!({ "dir": "tts", "filename": "kokoro" }));
-        return Ok(());
-    }
-
-    let tmp_path = dest.join("kokoro.tar.bz2.tmp");
-    stream_download(&app, KOKORO_PKG_URL, &tmp_path, "tts", "kokoro").await?;
-
-    let dest_dir = dest.clone();
-    let tmp = tmp_path.clone();
-    tokio::task::spawn_blocking(move || -> Result<(), String> {
-        use bzip2::read::BzDecoder;
-        use tar::Archive;
-
-        let file = std::fs::File::open(&tmp).map_err(|e| e.to_string())?;
-        let mut archive = Archive::new(BzDecoder::new(file));
-        archive.unpack(&dest_dir).map_err(|e| e.to_string())?;
-        std::fs::remove_file(&tmp).ok();
-        Ok(())
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
-    let _ = app.emit("download-complete", serde_json::json!({ "dir": "tts", "filename": "kokoro" }));
-    Ok(())
-}
-
 // ── Sherpa-ONNX TTS binary download (legacy, Windows only) ───────────────────
 
 #[tauri::command]
@@ -566,9 +620,11 @@ pub async fn download_sherpa_tts(app: tauri::AppHandle) -> Result<(), String> {
     let dest = binary_dir(&app, "sherpa")?;
 
     if get_sherpa_tts_bin(&app).is_ok() {
+        log::info!("Sherpa-ONNX TTS already installed, skipping download");
         let _ = app.emit("download-complete", serde_json::json!({ "dir": "binaries", "filename": "sherpa" }));
         return Ok(());
     }
 
+    log::info!("Starting Sherpa-ONNX download from {}", SHERPA_TTS_WIN_URL);
     download_and_extract_tarbz2(&app, SHERPA_TTS_WIN_URL, dest, "sherpa").await
 }

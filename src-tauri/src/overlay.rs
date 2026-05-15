@@ -15,6 +15,7 @@ use crate::{
 pub fn setup<R: tauri::Runtime>(
     app: &mut tauri::App<R>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    log::info!("Setting up overlay window");
     let builder = WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App("overlay.html".into()))
         .title("")
         .inner_size(OVERLAY_W, OVERLAY_H)
@@ -32,13 +33,9 @@ pub fn setup<R: tauri::Runtime>(
     let builder = builder.focused(false);
     let overlay = builder.build()?;
 
-    // tao 0.35 panics inside the event loop on Linux when set_ignore_cursor_events
-    // is called before the GDK window is realized (window.window() returns None and
-    // tao unwraps it unconditionally). The Err return never reaches our code.
-    // Click-through is best-effort on Linux anyway — skip it there entirely.
     #[cfg(not(target_os = "linux"))]
     if let Err(e) = overlay.set_ignore_cursor_events(true) {
-        eprintln!("[vocyl] click-through overlay unavailable: {e}");
+        log::warn!("Click-through overlay unavailable: {}", e);
     }
 
     if let Ok(Some(monitor)) = overlay.primary_monitor() {
@@ -57,12 +54,16 @@ pub fn setup<R: tauri::Runtime>(
         (s.ptt_shortcut.clone(), s.tts_shortcut.clone())
     };
 
-    // Global shortcuts require X11 or Windows/macOS. On Wayland they are
-    // silently unavailable — log the failure instead of aborting startup.
+    log::info!(
+        "Registering shortcuts — PTT='{}', TTS='{}'",
+        ptt_shortcut,
+        tts_shortcut
+    );
     if let Err(e) = register_shortcuts(app.handle(), &ptt_shortcut, &tts_shortcut) {
-        eprintln!("[vocyl] global shortcuts unavailable (Wayland?): {e}");
+        log::warn!("Global shortcuts unavailable (Wayland?): {}", e);
     }
 
+    log::info!("Overlay setup complete");
     Ok(())
 }
 
@@ -73,16 +74,18 @@ pub fn register_shortcuts<R: tauri::Runtime>(
     ptt_shortcut: &str,
     tts_shortcut: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Remove all existing shortcuts first
+    log::info!(
+        "Registering global shortcuts — PTT='{}', TTS='{}'",
+        ptt_shortcut,
+        tts_shortcut
+    );
     app.global_shortcut().unregister_all()?;
 
-    // Push-to-talk
     app.global_shortcut()
         .on_shortcut(ptt_shortcut, |app, _shortcut, event| {
             handle_ptt(app, event.state);
         })?;
 
-    // Text-to-speech toggle
     app.global_shortcut()
         .on_shortcut(tts_shortcut, |app, _shortcut, event| {
             if let ShortcutState::Pressed = event.state {
@@ -90,6 +93,7 @@ pub fn register_shortcuts<R: tauri::Runtime>(
             }
         })?;
 
+    log::info!("Global shortcuts registered successfully");
     Ok(())
 }
 
@@ -99,6 +103,7 @@ pub fn update_shortcuts<R: tauri::Runtime>(
     ptt: String,
     tts: String,
 ) -> Result<(), String> {
+    log::info!("Updating shortcuts — PTT='{}', TTS='{}'", ptt, tts);
     register_shortcuts(&app, &ptt, &tts).map_err(|e| e.to_string())
 }
 
@@ -107,18 +112,17 @@ pub fn update_shortcuts<R: tauri::Runtime>(
 fn handle_ptt<R: tauri::Runtime>(app: &tauri::AppHandle<R>, state: ShortcutState) {
     match state {
         ShortcutState::Pressed => {
-            // Ignore if already recording
             if app.state::<SttState>().is_recording.load(std::sync::atomic::Ordering::SeqCst) {
+                log::debug!("PTT: already recording, ignoring press");
                 return;
             }
 
-            // Show overlay in "waiting" state
+            log::info!("PTT: key pressed — starting push-to-talk");
             if let Some(overlay) = app.get_webview_window("overlay") {
                 let _ = overlay.show();
                 emit_overlay_state(app, "waiting");
             }
 
-            // Get preferred input device from settings
             let device_name = app
                 .state::<SettingsCache>()
                 .0
@@ -131,22 +135,25 @@ fn handle_ptt<R: tauri::Runtime>(app: &tauri::AppHandle<R>, state: ShortcutState
         }
 
         ShortcutState::Released => {
+            log::info!("PTT: key released — transcribing");
             let handle = app.clone();
             tauri::async_runtime::spawn(async move {
                 emit_overlay_state(&handle, "processing");
 
                 match stop_and_transcribe(&handle).await {
                     Ok(transcript) if !transcript.is_empty() => {
-                        // Small pause so focus returns to the target window
+                        log::info!("PTT: transcript received, injecting text");
                         tokio::time::sleep(Duration::from_millis(50)).await;
 
                         if let Err(e) = inject_text(&transcript) {
-                            eprintln!("[vocyl] text injection failed: {e}");
+                            log::error!("PTT: text injection failed: {}", e);
                         }
                     }
-                    Ok(_) => {} // empty transcript
+                    Ok(_) => {
+                        log::info!("PTT: empty transcript, nothing to inject");
+                    }
                     Err(e) => {
-                        eprintln!("[vocyl] transcription failed: {e}");
+                        log::error!("PTT: transcription failed: {}", e);
                         emit_overlay_state(&handle, "error");
                         tokio::time::sleep(Duration::from_secs(2)).await;
                     }
@@ -165,17 +172,20 @@ fn handle_ptt<R: tauri::Runtime>(app: &tauri::AppHandle<R>, state: ShortcutState
 fn handle_tts<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     let tts = app.state::<TtsState>();
 
-    // Second press while playing → stop
     if tts.is_playing.load(std::sync::atomic::Ordering::SeqCst) {
+        log::info!("TTS: shortcut pressed while playing — stopping");
         stop_speaking(app);
         return;
     }
 
-    // Get selected text (this blocks briefly for the clipboard round-trip)
+    log::info!("TTS: shortcut pressed — capturing selected text");
     let text = match get_selected_text() {
-        Ok(t) if !t.trim().is_empty() => t.trim().to_string(),
-        _ => {
-            // Briefly flash "no text selected" in the overlay
+        Ok(t) if !t.trim().is_empty() => {
+            log::info!("TTS: got selected text ({} chars)", t.trim().len());
+            t.trim().to_string()
+        }
+        Ok(_) => {
+            log::info!("TTS: no text selected");
             if let Some(overlay) = app.get_webview_window("overlay") {
                 let _ = overlay.show();
             }
@@ -191,9 +201,12 @@ fn handle_tts<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 
             return;
         }
+        Err(e) => {
+            log::error!("TTS: failed to get selected text: {}", e);
+            return;
+        }
     };
 
-    // Show overlay in "reading" state
     if let Some(overlay) = app.get_webview_window("overlay") {
         let _ = overlay.show();
     }
