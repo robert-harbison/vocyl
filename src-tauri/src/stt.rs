@@ -419,7 +419,31 @@ pub fn inject_text(text: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    #[cfg(not(target_os = "windows"))]
+    // Linux/X11: enigo.text() uses XSendEvent which most apps ignore.
+    // Clipboard + Ctrl+V is reliable across all X11 apps.
+    #[cfg(target_os = "linux")]
+    {
+        use arboard::Clipboard;
+        use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+
+        let mut clipboard = Clipboard::new().map_err(|e| format!("Clipboard error: {e}"))?;
+        clipboard.set_text(text).map_err(|e| format!("Failed to copy transcript to clipboard: {e}"))?;
+
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        let mut enigo = Enigo::new(&Settings::default())
+            .map_err(|e| format!("Failed to create input injector: {e:?}"))?;
+        enigo.key(Key::Control, Direction::Press)
+            .map_err(|e| format!("Key injection failed: {e:?}"))?;
+        enigo.key(Key::Unicode('v'), Direction::Click)
+            .map_err(|e| format!("Key injection failed: {e:?}"))?;
+        enigo.key(Key::Control, Direction::Release)
+            .map_err(|e| format!("Key injection failed: {e:?}"))?;
+
+        return Ok(());
+    }
+
+    #[cfg(target_os = "macos")]
     {
         use enigo::{Enigo, Keyboard, Settings};
         let mut enigo = Enigo::new(&Settings::default())
