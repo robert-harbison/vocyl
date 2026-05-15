@@ -31,15 +31,40 @@ pub fn get_piper_bin<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<Pat
 
     // Direct placement (e.g. extracted flat into the piper/ dir)
     let candidate = dir.join(exe);
-    if candidate.exists() {
+    if candidate.is_file() {
+        ensure_executable(&candidate);
         return Ok(candidate);
     }
     // One level of nesting (e.g. piper_linux_x86_64.tar.gz → piper/piper)
     let nested = dir.join("piper").join(exe);
-    if nested.exists() {
+    if nested.is_file() {
+        ensure_executable(&nested);
         return Ok(nested);
     }
+    // Two levels of nesting (e.g. archive → piper/piper/piper)
+    let double_nested = dir.join("piper").join("piper").join(exe);
+    if double_nested.is_file() {
+        ensure_executable(&double_nested);
+        return Ok(double_nested);
+    }
     Err("Piper runtime not installed. Download it in Settings → Text-to-Speech.".to_string())
+}
+
+/// On Unix, add the execute bit if it is missing so a re-download is not required.
+#[allow(unused_variables)]
+fn ensure_executable(path: &std::path::Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = std::fs::metadata(path) {
+            let mode = meta.permissions().mode();
+            if mode & 0o111 == 0 {
+                let mut perms = meta.permissions();
+                perms.set_mode(mode | 0o111);
+                std::fs::set_permissions(path, perms).ok();
+            }
+        }
+    }
 }
 
 // ── Generic model file commands ───────────────────────────────────────────────
@@ -431,10 +456,26 @@ pub async fn download_piper(app: tauri::AppHandle) -> Result<(), String> {
     let dest = binary_dir(&app, "piper")?;
 
     if url.ends_with(".zip") {
-        download_and_extract_zip(&app, url, dest, "piper").await
+        download_and_extract_zip(&app, url, dest, "piper").await?;
     } else {
-        download_and_extract_targz(&app, url, dest, "piper").await
+        download_and_extract_targz(&app, url, dest, "piper").await?;
     }
+
+    // On Unix, the tar archive may not have the execute bit set in its headers.
+    // Explicitly mark the binary executable so `spawn` doesn't fail with EACCES.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(bin) = get_piper_bin(&app) {
+            let mut perms = std::fs::metadata(&bin)
+                .map_err(|e| e.to_string())?
+                .permissions();
+            perms.set_mode(perms.mode() | 0o111);
+            std::fs::set_permissions(&bin, perms).map_err(|e| e.to_string())?;
+        }
+    }
+
+    Ok(())
 }
 
 // ── Sherpa-ONNX legacy binary (Windows only, kept for existing installs) ──────
