@@ -9,16 +9,22 @@ pub struct AudioDevice {
 
 #[tauri::command]
 pub fn list_input_devices() -> Result<Vec<AudioDevice>, String> {
+    // On Linux, prefer PipeWire/PulseAudio enumeration for human-readable names.
+    #[cfg(target_os = "linux")]
+    if let Some(devices) = pactl_list_devices(true) {
+        return Ok(devices);
+    }
+
     let host = cpal::default_host();
     let devices = host.input_devices().map_err(|e| e.to_string())?;
 
     Ok(devices
         .filter_map(|d| {
             let id = d.name().ok()?;
-            if !is_useful_device(&id) {
+            if !is_useful_alsa_device(&id) {
                 return None;
             }
-            let name = friendly_device_name(&id);
+            let name = friendly_alsa_name(&id);
             Some(AudioDevice { id, name })
         })
         .collect())
@@ -26,24 +32,97 @@ pub fn list_input_devices() -> Result<Vec<AudioDevice>, String> {
 
 #[tauri::command]
 pub fn list_output_devices() -> Result<Vec<AudioDevice>, String> {
+    // On Linux, prefer PipeWire/PulseAudio enumeration for human-readable names.
+    #[cfg(target_os = "linux")]
+    if let Some(devices) = pactl_list_devices(false) {
+        return Ok(devices);
+    }
+
     let host = cpal::default_host();
     let devices = host.output_devices().map_err(|e| e.to_string())?;
 
     Ok(devices
         .filter_map(|d| {
             let id = d.name().ok()?;
-            if !is_useful_device(&id) {
+            if !is_useful_alsa_device(&id) {
                 return None;
             }
-            let name = friendly_device_name(&id);
+            let name = friendly_alsa_name(&id);
             Some(AudioDevice { id, name })
         })
         .collect())
 }
 
-/// On Linux/ALSA, skip raw-hardware and plugin devices that are exclusive-access
-/// or serve no purpose in a GUI picker (hw:, plughw:, dmix:, surround channels, etc.).
-fn is_useful_device(name: &str) -> bool {
+// ── Linux / PipeWire / PulseAudio ─────────────────────────────────────────────
+
+/// Use `pactl list sinks` (output) or `pactl list sources` (input) to enumerate
+/// devices with their human-readable descriptions. This works on both PipeWire
+/// (via its PulseAudio compatibility layer) and classic PulseAudio.
+///
+/// Returns `None` if `pactl` is not available so callers can fall back to ALSA.
+#[cfg(target_os = "linux")]
+fn pactl_list_devices(input: bool) -> Option<Vec<AudioDevice>> {
+    let kind = if input { "sources" } else { "sinks" };
+    let output = std::process::Command::new("pactl")
+        .args(["list", kind])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut devices = parse_pactl_output(&text, input);
+    if devices.is_empty() {
+        return None;
+    }
+    // Prepend a "use system default" sentinel so the user can always revert.
+    devices.insert(0, AudioDevice {
+        id: String::new(),
+        name: "Default (System)".to_string(),
+    });
+    Some(devices)
+}
+
+/// Parse the output of `pactl list sinks` or `pactl list sources`.
+/// Extracts `Name:` (used as device ID) and `Description:` (display label).
+/// Monitor sources (e.g. loopback of an output) are excluded from the input list.
+#[cfg(target_os = "linux")]
+fn parse_pactl_output(text: &str, input: bool) -> Vec<AudioDevice> {
+    let mut devices: Vec<AudioDevice> = Vec::new();
+    let mut cur_name: Option<String> = None;
+    let mut cur_desc: Option<String> = None;
+
+    let flush = |name: Option<String>, desc: Option<String>, devices: &mut Vec<AudioDevice>| {
+        if let (Some(id), Some(display)) = (name, desc) {
+            // Skip monitor sources — they capture the output of a sink, not a real mic.
+            if input && id.ends_with(".monitor") {
+                return;
+            }
+            devices.push(AudioDevice { id, name: display });
+        }
+    };
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("Name:") {
+            flush(cur_name.take(), cur_desc.take(), &mut devices);
+            cur_name = Some(rest.trim().to_string());
+        } else if let Some(rest) = trimmed.strip_prefix("Description:") {
+            cur_desc = Some(rest.trim().to_string());
+        }
+    }
+    flush(cur_name, cur_desc, &mut devices);
+
+    devices
+}
+
+// ── ALSA fallback (non-Linux paths and Linux without pactl) ───────────────────
+
+/// Skip raw-hardware and plugin devices that are exclusive-access or serve no
+/// purpose in a GUI picker (hw:, plughw:, dmix:, surround channels, etc.).
+fn is_useful_alsa_device(name: &str) -> bool {
     #[cfg(target_os = "linux")]
     {
         const SKIP: &[&str] = &[
@@ -62,7 +141,7 @@ fn is_useful_device(name: &str) -> bool {
 
 /// Convert an ALSA device identifier into a human-readable display name.
 /// On Windows/macOS, cpal already provides friendly names so the raw value is returned.
-fn friendly_device_name(name: &str) -> String {
+fn friendly_alsa_name(name: &str) -> String {
     #[cfg(target_os = "linux")]
     {
         // ALSA names encode the card name in a CARD= parameter, e.g.:

@@ -231,8 +231,8 @@ export default function SettingsScreen() {
 		formState: { isSubmitting },
 	} = useForm<FormValues>({
 		defaultValues: {
-			inputDeviceId: settings.inputDeviceId,
-			outputDeviceId: settings.outputDeviceId,
+			inputDeviceId: settings.inputDeviceId ?? '',
+			outputDeviceId: settings.outputDeviceId ?? '',
 			pttShortcut: settings.pttShortcut,
 			ttsShortcut: settings.ttsShortcut,
 			ttsEngine: settings.ttsEngine,
@@ -313,8 +313,8 @@ export default function SettingsScreen() {
 	const onSubmit = async (data: FormValues) => {
 		await saveSettings({
 			schemaVersion: SETTINGS_SCHEMA_VERSION,
-			inputDeviceId: data.inputDeviceId,
-			outputDeviceId: data.outputDeviceId,
+			inputDeviceId: data.inputDeviceId === '' ? null : data.inputDeviceId,
+			outputDeviceId: data.outputDeviceId === '' ? null : data.outputDeviceId,
 			pttShortcut: data.pttShortcut,
 			ttsShortcut: data.ttsShortcut,
 			ttsEngine: data.ttsEngine,
