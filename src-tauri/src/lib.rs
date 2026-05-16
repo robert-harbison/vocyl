@@ -6,6 +6,7 @@ mod platform;
 mod settings;
 mod stt;
 mod system;
+mod text_bridge;
 mod tts;
 mod tray;
 mod windows;
@@ -20,6 +21,11 @@ use overlay::{update_shortcuts, suspend_shortcuts, resume_shortcuts};
 use settings::{load_settings, save_settings, settings_exist, SettingsCache};
 use stt::SttState;
 use tts::{prewarm_kokoro, TtsState};
+
+#[tauri::command]
+fn get_text_bridge_capabilities() -> text_bridge::TextBridgeCapabilities {
+    text_bridge::get_text_bridge_capabilities()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -70,6 +76,8 @@ pub fn run() {
             exit_app,
             // System info
             system::get_system_info,
+            // Text bridge capabilities (for UI to report degraded support)
+            get_text_bridge_capabilities,
         ])
         .setup(|app| {
             log::info!(
