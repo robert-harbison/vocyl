@@ -31,17 +31,14 @@ Vocyl integrates with several third-party open-source components. Full license d
 
 | Component                                                  | License     | Notes                                                                               |
 | ---------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------- |
-| [Piper TTS](https://github.com/OHF-Voice/piper1-gpl)       | **GPL-3.0** | Optional; run as a separate subprocess. Source at the link above.                   |
 | [whisper.cpp CLI](https://github.com/ggml-org/whisper.cpp) | MIT         | Windows only; run as a separate subprocess.                                         |
 | Kokoro model (model/voices/tokens)                         | Apache-2.0  | ONNX model weights.                                                                 |
 | espeak-ng data (bundled in Kokoro package)                 | **GPL-3.0** | Phonemizer data files. Source: [espeak-ng](https://github.com/espeak-ng/espeak-ng). |
 | Whisper GGML models                                        | MIT         | Original models by OpenAI.                                                          |
 
-> **Note on GPL-3.0 components:** Piper and the espeak-ng phonemizer data files
+> **Note on GPL-3.0 components:** Espeak-ng phonemizer data files
 > (bundled in the Kokoro model package) are GPL-3.0 licensed. They are never
-> compiled into or linked with the Vocyl binary — Piper runs as a fully separate
-> OS process, and the espeak-ng data files are loaded at runtime by the
-> sherpa-onnx library. Vocyl's Apache-2.0 license applies only to the Vocyl
-> source code and binary. Users who download Piper or the Kokoro model package
+> compiled into or linked with the Vocyl binary. Vocyl's Apache-2.0 license applies only to the Vocyl
+> source code and binary. Users who download the Kokoro model package
 > receive GPL-3.0-licensed software and are subject to those terms.
 > Source code for both is freely available at the links above.

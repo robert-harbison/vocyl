@@ -22,12 +22,10 @@ Downloaded models and runtime binaries are stored in the application data direct
 
 Subdirectories within the data folder:
 
-| Path                | Contents                                               |
-| ------------------- | ------------------------------------------------------ |
-| `models/tts/`       | TTS voice models (Piper `.onnx` files, Kokoro package) |
-| `models/stt/`       | STT models (`ggml-*.bin` Whisper model files)          |
-| `binaries/piper/`   | Piper TTS runtime executable                           |
-| `binaries/whisper/` | Whisper CLI executable (Windows only)                  |
+| Path          | Contents                                      |
+| ------------- | --------------------------------------------- |
+| `models/tts/` | TTS voice models (Kokoro package)             |
+| `models/stt/` | STT models (`ggml-*.bin` Whisper model files) |
 
 ## Logs
 

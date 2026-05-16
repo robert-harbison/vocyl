@@ -291,32 +291,6 @@ Full text of the GPL-3.0 license: https://www.gnu.org/licenses/gpl-3.0.html
 
 ---
 
-### Piper TTS (optional, subprocess only)
-
-- **Repository:** https://github.com/OHF-Voice/piper1-gpl
-- **License:** ⚠️ **GPL-3.0-or-later**
-- **Use type:** Runtime download + Subprocess (completely separate OS process)
-- **Copyright:** Michael Hansen and OHF-Voice contributors
-
-**Important licensing note:**
-
-Piper is licensed under the **GNU General Public License v3.0 or later
-(GPL-3.0-or-later)**. Vocyl downloads the Piper binary at the user's
-explicit request and invokes it as a **completely separate operating system
-process**, communicating only through standard input and temporary WAV files.
-Vocyl does not link against, embed, or incorporate any part of Piper's source
-code or compiled code.
-
-Under the GPL, when the user downloads and runs the Piper binary, they receive
-all rights under GPL-3.0 including the right to the source code. The complete
-source code for Piper is available at:
-
-https://github.com/OHF-Voice/piper1-gpl
-
-Full text of the GPL-3.0 license: https://www.gnu.org/licenses/gpl-3.0.html
-
----
-
 ## JavaScript / Frontend Dependencies
 
 All frontend dependencies are MIT licensed and fully compatible with
@@ -339,25 +313,22 @@ assets) with no runtime linking implications.
 
 ## License Compatibility Summary
 
-| Component          | License           | Compiled into Vocyl binary? | Notes                                 |
-| ------------------ | ----------------- | --------------------------- | ------------------------------------- |
-| Vocyl itself       | Apache-2.0        | —                           |                                       |
-| All Rust crates    | MIT or Apache-2.0 | Yes                         | ✅ Compatible                         |
-| all JS deps        | MIT               | Build-time bundle           | ✅ Compatible                         |
-| whisper-cli.exe    | MIT               | No (subprocess, Windows)    | ✅ Compatible                         |
-| Whisper models     | MIT               | No (runtime data)           | ✅ Compatible                         |
-| sherpa-onnx        | Apache-2.0        | Yes                         | ✅ Compatible                         |
-| Kokoro model files | Apache-2.0        | No (runtime data)           | ✅ Compatible                         |
-| espeak-ng-data     | **GPL-3.0**       | No (runtime data)           | ⚠️ Data only, not linked              |
-| Piper binary       | **GPL-3.0**       | No (subprocess)             | ⚠️ Separate process, arm's-length IPC |
+| Component          | License           | Compiled into Vocyl binary? | Notes                    |
+| ------------------ | ----------------- | --------------------------- | ------------------------ |
+| Vocyl itself       | Apache-2.0        | —                           |                          |
+| All Rust crates    | MIT or Apache-2.0 | Yes                         | ✅ Compatible            |
+| all JS deps        | MIT               | Build-time bundle           | ✅ Compatible            |
+| whisper-cli.exe    | MIT               | No (subprocess, Windows)    | ✅ Compatible            |
+| Whisper models     | MIT               | No (runtime data)           | ✅ Compatible            |
+| sherpa-onnx        | Apache-2.0        | Yes                         | ✅ Compatible            |
+| Kokoro model files | Apache-2.0        | No (runtime data)           | ✅ Compatible            |
+| espeak-ng-data     | **GPL-3.0**       | No (runtime data)           | ⚠️ Data only, not linked |
 
 **Vocyl's Apache-2.0 license is maintained** because the GPL-3.0 components
-(Piper binary and espeak-ng data files) are neither compiled into nor linked
+(espeak-ng data files) are neither compiled into nor linked
 with the Vocyl binary. They are separate programs and data files downloaded
-and managed by the user. Vocyl communicates with Piper exclusively through
-subprocess IPC (stdin and temp files) which constitutes "mere aggregation"
-under GPL-3.0 Section 5.
+and managed by the user.
 
-However, users who download Piper or the Kokoro model package (which includes
+However, users who download Kokoro model package (which includes
 espeak-ng data) receive GPL-3.0-licensed software and are subject to those
 terms.

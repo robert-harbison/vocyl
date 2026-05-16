@@ -1,4 +1,4 @@
-export const SETTINGS_SCHEMA_VERSION = 2;
+export const SETTINGS_SCHEMA_VERSION = 1;
 
 export type SttModelSize = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
 

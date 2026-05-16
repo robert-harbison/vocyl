@@ -86,19 +86,6 @@ Hugging Face at the user's request and are NOT bundled with this software.
 -------------------------------------------------------------------------
 
 -------------------------------------------------------------------------
-Piper TTS (optional, run as a separate subprocess)
-https://github.com/OHF-Voice/piper1-gpl
-Copyright 2023 Michael Hansen and OHF-Voice contributors
-Licensed under: GPL-3.0-or-later
-NOTE: The Piper binary is an OPTIONAL, user-initiated download. It is
-run as a completely separate process from Vocyl and communicates only
-through standard I/O and temporary files. Vocyl does not link against
-or embed any part of Piper. Users who download and use Piper are subject
-to its GPL-3.0 license. The complete corresponding source code for Piper
-is available at the repository above.
--------------------------------------------------------------------------
-
--------------------------------------------------------------------------
 reqwest (HTTP client)
 https://github.com/seanmonstar/reqwest
 Copyright Sean McArthur
