@@ -6,9 +6,9 @@
 	--color-primary-hover: oklch(58.5% 0.233 277.117); /* indigo-500 */
 
 	/* ── Surfaces ─────────────────────────────────────────────── */
-	--color-bg-base: oklch(13% 0.028 261.692); /* gray-950 — page background */
-	--color-bg-surface: oklch(21% 0.034 264.665); /* gray-900 — cards / panels  */
-	--color-bg-elevated: oklch(27.8% 0.033 256.848); /* gray-800 — inputs / hover  */
+	--color-bg-base: oklch(13% 0.028 261.692); /* gray-950 - page background */
+	--color-bg-surface: oklch(21% 0.034 264.665); /* gray-900 - cards / panels  */
+	--color-bg-elevated: oklch(27.8% 0.033 256.848); /* gray-800 - inputs / hover  */
 
 	/* ── Borders ──────────────────────────────────────────────── */
 	--color-border: oklch(27.8% 0.033 256.848); /* gray-800 */
@@ -36,9 +36,4 @@
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 	-webkit-text-size-adjust: 100%;
-}
-
-html,
-body {
-	background-color: var(--color-bg-base);
 }

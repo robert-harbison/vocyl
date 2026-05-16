@@ -1,5 +1,5 @@
 /* ─── Root container ─────────────────────────────────────────────────────────
-   Transparent viewport — the pill's border-radius creates the visible shape. */
+   Transparent viewport - the pill's border-radius creates the visible shape. */
 .container {
 	width: 100%;
 	height: 100%;
@@ -7,7 +7,7 @@
 }
 
 /* ─── Pill ───────────────────────────────────────────────────────────────────
-   overflow:hidden is the "clip rect" — it trims the wave bars to the rounded
+   overflow:hidden is the "clip rect" - it trims the wave bars to the rounded
    pill silhouette. The window's transparent corners stay see-through.        */
 .pill {
 	position: relative;
@@ -86,7 +86,7 @@
 }
 
 /* ─── Label ──────────────────────────────────────────────────────────────────
-   No background — the waves show through. Legibility comes entirely from the
+   No background - the waves show through. Legibility comes entirely from the
    layered dark text-shadow halo around each letter.                          */
 .labelWrap {
 	position: absolute;

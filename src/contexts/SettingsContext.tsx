@@ -34,7 +34,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 				}
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
-				logger.error(`SettingsContext: init error — ${msg}`);
+				logger.error(`SettingsContext: init error - ${msg}`);
 				setError(msg);
 			} finally {
 				setLoading(false);
@@ -52,7 +52,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 			logger.info('SettingsContext: settings saved successfully');
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
-			logger.error(`SettingsContext: save error — ${msg}`);
+			logger.error(`SettingsContext: save error - ${msg}`);
 			throw err;
 		}
 	};

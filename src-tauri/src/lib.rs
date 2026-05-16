@@ -5,6 +5,7 @@ mod overlay;
 mod platform;
 mod settings;
 mod stt;
+mod system;
 mod tts;
 mod tray;
 mod windows;
@@ -15,7 +16,7 @@ use tauri::Manager;
 use tauri::Emitter;
 
 use app::exit_app;
-use overlay::update_shortcuts;
+use overlay::{update_shortcuts, suspend_shortcuts, resume_shortcuts};
 use settings::{load_settings, save_settings, settings_exist, SettingsCache};
 use stt::SttState;
 use tts::{prewarm_kokoro, TtsState};
@@ -53,6 +54,8 @@ pub fn run() {
             save_settings,
             // Shortcuts
             update_shortcuts,
+            suspend_shortcuts,
+            resume_shortcuts,
             // Audio devices
             audio::list_input_devices,
             audio::list_output_devices,
@@ -62,8 +65,11 @@ pub fn run() {
             models::delete_file,
             models::is_kokoro_installed,
             models::download_kokoro_package,
+            models::delete_kokoro_package,
             // App
             exit_app,
+            // System info
+            system::get_system_info,
         ])
         .setup(|app| {
             log::info!(

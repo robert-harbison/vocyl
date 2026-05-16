@@ -103,7 +103,7 @@ pub fn prewarm_kokoro<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
             log::debug!("TTS: Kokoro already loaded, skipping pre-warm");
             return;
         }
-        log::info!("TTS: pre-warming Kokoro model…");
+        log::info!("TTS: pre-warming Kokoro model...");
         if let Ok(tts) = create_kokoro_engine(&model_dir, num_threads()) {
             *guard = Some(KokoroHandle { tts, model_dir });
             log::info!("TTS: Kokoro pre-warm complete");
@@ -292,7 +292,7 @@ async fn speak_kokoro<R: tauri::Runtime>(
                 .map(|h| h.model_dir != model_dir)
                 .unwrap_or(true);
             if needs_reload {
-                log::info!("TTS: loading Kokoro model…");
+                log::info!("TTS: loading Kokoro model...");
                 let tts = create_kokoro_engine(&model_dir, n_threads)?;
                 *guard = Some(KokoroHandle { tts, model_dir: model_dir.clone() });
                 log::info!("TTS: Kokoro model loaded and cached");

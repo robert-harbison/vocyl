@@ -19,7 +19,7 @@ export default function Dropdown<T extends string = string>({
 	options,
 	value,
 	onChange,
-	placeholder = 'Select…',
+	placeholder = 'Select...',
 	disabled = false,
 	className,
 }: DropdownProps<T>): JSX.Element {
@@ -35,7 +35,9 @@ export default function Dropdown<T extends string = string>({
 			}
 		};
 		document.addEventListener('mousedown', onMouseDown);
-		return () => document.removeEventListener('mousedown', onMouseDown);
+		return () => {
+			document.removeEventListener('mousedown', onMouseDown);
+		};
 	}, []);
 
 	return (
@@ -51,7 +53,9 @@ export default function Dropdown<T extends string = string>({
 						'cursor-not-allowed opacity-50 text-text-faint'
 					:	'cursor-pointer text-text hover:border-border',
 				)}
-				onClick={() => setOpen((o) => !o)}
+				onClick={() => {
+					setOpen((o) => !o);
+				}}
 			>
 				<span className={clsx(!selected && 'text-text-faint')}>
 					{selected ? selected.label : placeholder}

@@ -13,7 +13,7 @@ interface State {
 }
 
 /**
- * ErrorBoundary — catches unhandled React render/lifecycle errors and logs
+ * ErrorBoundary - catches unhandled React render/lifecycle errors and logs
  * them via the structured logger so they appear in the app log file.
  *
  * Wraps the root of both the main window and the overlay window.
@@ -34,7 +34,7 @@ export default class ErrorBoundary extends Component<Props, State> {
 		const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 		const stack = info.componentStack ?? '(no stack)';
 		logger.error(
-			`[ErrorBoundary:${ctx}] Unhandled render error — ${message}\nComponent stack:${stack}`,
+			`[ErrorBoundary:${ctx}] Unhandled render error - ${message}\nComponent stack:${stack}`,
 		);
 	}
 

@@ -108,6 +108,25 @@ pub fn update_shortcuts<R: tauri::Runtime>(
     register_shortcuts(&app, &ptt, &tts).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn suspend_shortcuts<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<(), String> {
+    log::info!("Suspending global shortcuts for keybind recording");
+    app.global_shortcut()
+        .unregister_all()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn resume_shortcuts<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<(), String> {
+    let (ptt, tts) = {
+        let cache = app.state::<SettingsCache>();
+        let s = cache.0.lock().unwrap();
+        (s.ptt_shortcut.clone(), s.tts_shortcut.clone())
+    };
+    log::info!("Resuming global shortcuts — PTT='{}', TTS='{}'", ptt, tts);
+    register_shortcuts(&app, &ptt, &tts).map_err(|e| e.to_string())
+}
+
 // ── PTT handler ───────────────────────────────────────────────────────────────
 
 fn handle_ptt<R: tauri::Runtime>(app: &tauri::AppHandle<R>, state: ShortcutState) {

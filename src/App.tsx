@@ -7,7 +7,9 @@ import Loader from '@components/Loader';
 import Toast from '@components/Toast';
 import { logger } from '@services/logService';
 
-function App() {
+import './App.css';
+
+export default function App() {
 	const { loading, exists } = useSettingsContext();
 	const [showDuplicateWarning, setShowDuplicateWarning] = useState(false);
 
@@ -18,8 +20,11 @@ function App() {
 			logger.warn('App: duplicate instance launch attempted');
 			setShowDuplicateWarning(true);
 		});
+
 		return () => {
-			unlisten.then((fn) => fn());
+			void unlisten.then((fn) => {
+				fn();
+			});
 		};
 	}, []);
 
@@ -39,11 +44,11 @@ function App() {
 			{showDuplicateWarning && (
 				<Toast
 					message="Vocyl is already running."
-					onDismiss={() => setShowDuplicateWarning(false)}
+					onDismiss={() => {
+						setShowDuplicateWarning(false);
+					}}
 				/>
 			)}
 		</>
 	);
 }
-
-export default App;

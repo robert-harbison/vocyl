@@ -1,9 +1,8 @@
 declare const __APP_VERSION__: string;
 
-import { useState, useEffect, useCallback, type JSX } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { listen } from '@tauri-apps/api/event';
-import { clsx } from 'clsx';
 
 import { SETTINGS_SCHEMA_VERSION, type SttModelSize } from '@models/settings';
 import { useSettingsContext } from '@contexts/SettingsContext';
@@ -17,7 +16,12 @@ import { audioService, type AudioDevice } from '@services/audioService';
 import { modelService } from '@services/modelService';
 import { settingsService } from '@services/settingsService';
 import { logger } from '@services/logService';
-import { KOKORO_VOICES, STT_MODELS, type ModelFile } from '@/constants/models';
+import { KOKORO_VOICES, STT_MODELS } from '@/constants/models';
+import { Check, Mic } from 'lucide-react';
+import ModelRow, { type DownloadStates } from './ModelRow';
+import BinaryRow from './BinaryRow';
+import { systemService } from '@services/systemService';
+import { getRecommendedSttModel } from '@utils/modelUtils';
 
 // ── Local types ───────────────────────────────────────────────────────────────
 
@@ -41,176 +45,6 @@ interface DownloadCompleteEvent {
 	filename: string;
 }
 
-// Key = `${dir}/${filename}`, value = 0-100 progress or 'done'
-type DownloadStates = Record<string, number | 'done'>;
-
-// ── Model download row ────────────────────────────────────────────────────────
-
-interface ModelRowProps {
-	id: string;
-	label: string;
-	sizeMb: number;
-	files: ModelFile[];
-	dir: 'tts' | 'stt';
-	downloadedFiles: string[];
-	dlStates: DownloadStates;
-	activeId: string | null;
-	onUse: (id: string) => void;
-	onRefresh: () => void;
-}
-
-function ModelRow({
-	id,
-	label,
-	sizeMb,
-	files,
-	dir,
-	downloadedFiles,
-	dlStates,
-	activeId,
-	onUse,
-	onRefresh,
-}: ModelRowProps): JSX.Element {
-	const isDownloaded = files.every((f) => downloadedFiles.includes(f.filename));
-	const isActive = activeId === id;
-
-	const activeFile = files.find((f) => {
-		const key = `${dir}/${f.filename}`;
-		return typeof dlStates[key] === 'number';
-	});
-	const isDownloading = activeFile !== undefined;
-	const progress = activeFile ? (dlStates[`${dir}/${activeFile.filename}`] as number) : 0;
-
-	const handleDownload = useCallback(async () => {
-		logger.info(`ModelRow: downloading ${dir}/${files.map((f) => f.filename).join(', ')}`);
-		for (const file of files) {
-			await modelService.downloadFile(dir, file.filename, file.url);
-		}
-		logger.info(`ModelRow: download complete for ${dir}/${id}`);
-		onRefresh();
-	}, [files, dir, onRefresh, id]);
-
-	const handleDelete = useCallback(async () => {
-		logger.info(`ModelRow: deleting ${dir}/${id}`);
-		for (const file of files) {
-			if (downloadedFiles.includes(file.filename)) {
-				await modelService.deleteFile(dir, file.filename);
-			}
-		}
-		logger.info(`ModelRow: delete complete for ${dir}/${id}`);
-		onRefresh();
-	}, [files, dir, downloadedFiles, onRefresh, id]);
-
-	return (
-		<div className="flex items-center gap-3 px-4 py-2.5">
-			<span
-				className={clsx(
-					'w-2 h-2 shrink-0 rounded-full',
-					isDownloaded ? 'bg-success' : 'bg-text-faint/30',
-				)}
-			/>
-			<span className="flex-1 text-sm text-text truncate">{label}</span>
-			<span className="text-xs text-text-faint tabular-nums shrink-0">
-				{sizeMb >= 1000 ? `${(sizeMb / 1000).toFixed(1)} GB` : `${sizeMb} MB`}
-			</span>
-
-			{isDownloading ?
-				<div className="flex items-center gap-2 min-w-[112px]">
-					<div className="flex-1 h-1 bg-bg-elevated rounded-full overflow-hidden">
-						<div
-							className="h-full bg-primary rounded-full transition-all duration-300"
-							style={{ width: `${progress}%` }}
-						/>
-					</div>
-					<span className="text-xs text-text-faint w-8 text-right">{progress}%</span>
-				</div>
-			: isDownloaded ?
-				<div className="flex items-center gap-2">
-					<button
-						type="button"
-						onClick={() => onUse(id)}
-						className={clsx(
-							'text-xs px-2 py-0.5 rounded transition-colors',
-							isActive ?
-								'bg-primary/10 text-primary font-medium'
-							:	'text-text-faint hover:text-text',
-						)}
-					>
-						{isActive ? '✓ Using' : 'Use'}
-					</button>
-					<button
-						type="button"
-						onClick={() => void handleDelete()}
-						className="text-xs text-error hover:text-error/80 transition-colors px-1"
-					>
-						Delete
-					</button>
-				</div>
-			:	<button
-					type="button"
-					onClick={() => void handleDownload()}
-					className="text-xs text-primary hover:text-primary/80 transition-colors px-2 py-0.5 rounded border border-primary/30 hover:border-primary/60"
-				>
-					Download
-				</button>
-			}
-		</div>
-	);
-}
-
-// ── Binary / runtime row ──────────────────────────────────────────────────────
-
-interface BinaryRowProps {
-	label: string;
-	description: string;
-	isInstalled: boolean;
-	dlKey: string;
-	dlStates: DownloadStates;
-	onDownload: () => void;
-}
-
-function BinaryRow({
-	label,
-	description,
-	isInstalled,
-	dlKey,
-	dlStates,
-	onDownload,
-}: BinaryRowProps): JSX.Element {
-	const downloading = dlStates[dlKey];
-	const isDownloading = typeof downloading === 'number';
-	const progress = isDownloading ? (downloading as number) : 0;
-
-	return (
-		<div className="flex items-center gap-3 px-4 py-3">
-			<div className="flex-1 min-w-0">
-				<p className="text-sm font-medium text-text-strong">{label}</p>
-				<p className="text-xs text-text-faint mt-0.5">{description}</p>
-			</div>
-			{isInstalled ?
-				<span className="text-xs text-success font-medium">✓ Installed</span>
-			: isDownloading ?
-				<div className="flex items-center gap-2 min-w-[112px]">
-					<div className="flex-1 h-1 bg-bg-elevated rounded-full overflow-hidden">
-						<div
-							className="h-full bg-primary rounded-full transition-all duration-300"
-							style={{ width: `${progress}%` }}
-						/>
-					</div>
-					<span className="text-xs text-text-faint w-8 text-right">{progress}%</span>
-				</div>
-			:	<button
-					type="button"
-					onClick={onDownload}
-					className="text-xs text-primary hover:text-primary/80 transition-colors px-2 py-0.5 rounded border border-primary/30 hover:border-primary/60"
-				>
-					Download
-				</button>
-			}
-		</div>
-	);
-}
-
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
@@ -222,13 +56,15 @@ export default function SettingsScreen() {
 	const [sttFiles, setSttFiles] = useState<string[]>([]);
 	const [kokoroInstalled, setKokoroInstalled] = useState(false);
 	const [dlStates, setDlStates] = useState<DownloadStates>({});
+	const [systemRamGb, setSystemRamGb] = useState<number | null>(null);
 
 	const {
 		control,
 		handleSubmit,
 		watch,
 		setValue,
-		formState: { isSubmitting },
+		trigger,
+		formState: { isSubmitting, errors },
 	} = useForm<FormValues>({
 		defaultValues: {
 			inputDeviceId: settings.inputDeviceId ?? '',
@@ -265,12 +101,17 @@ export default function SettingsScreen() {
 				audioService.listOutputDevices(),
 			]);
 			logger.info(
-				`SettingsScreen: ${inputs.length} input device(s), ${outputs.length} output device(s)`,
+				`SettingsScreen: ${String(inputs.length)} input device(s), ${String(outputs.length)} output device(s)`,
 			);
 			setInputDevices(inputs);
 			setOutputDevices(outputs);
 
-			await Promise.all([refreshSttFiles(), refreshBinaries()]);
+			const [, , sysInfo] = await Promise.all([
+				refreshSttFiles(),
+				refreshBinaries(),
+				systemService.getSystemInfo(),
+			]);
+			setSystemRamGb(sysInfo.total_ram_mb / 1024);
 			logger.info('SettingsScreen: initial load complete');
 		})();
 	}, [refreshSttFiles, refreshBinaries]);
@@ -278,28 +119,37 @@ export default function SettingsScreen() {
 	// ── Download event listeners ──────────────────────────────────────────────
 
 	useEffect(() => {
-		const unsubs: Array<() => void> = [];
+		const unsubs: (() => void)[] = [];
 
-		listen<DownloadProgressEvent>('download-progress', (e) => {
-			const key = `${e.payload.dir}/${e.payload.filename}`;
-			logger.debug(`Download progress: ${key} ${e.payload.progress}%`);
-			setDlStates((prev) => ({ ...prev, [key]: e.payload.progress }));
-		}).then((fn) => unsubs.push(fn));
+		void (async () => {
+			unsubs.push(
+				await listen<DownloadProgressEvent>('download-progress', (e) => {
+					const key = `${e.payload.dir}/${e.payload.filename}`;
+					logger.debug(`Download progress: ${key} ${String(e.payload.progress)}%`);
+					setDlStates((prev) => ({ ...prev, [key]: e.payload.progress }));
+				}),
+			);
 
-		listen<DownloadCompleteEvent>('download-complete', (e) => {
-			const key = `${e.payload.dir}/${e.payload.filename}`;
-			logger.info(`Download complete: ${key}`);
-			setDlStates((prev) => {
-				const next = { ...prev };
-				delete next[key];
-				return next;
+			unsubs.push(
+				await listen<DownloadCompleteEvent>('download-complete', (e) => {
+					const key = `${e.payload.dir}/${e.payload.filename}`;
+					logger.info(`Download complete: ${key}`);
+					setDlStates((prev) => {
+						const { [key]: _removed, ...rest } = prev;
+						return rest;
+					});
+					const dir = e.payload.dir;
+					if (dir === 'stt') void refreshSttFiles();
+					if (dir === 'tts') void refreshBinaries();
+				}),
+			);
+		})();
+
+		return () => {
+			unsubs.forEach((fn) => {
+				fn();
 			});
-			const dir = e.payload.dir;
-			if (dir === 'stt') void refreshSttFiles();
-			if (dir === 'tts') void refreshBinaries();
-		}).then((fn) => unsubs.push(fn));
-
-		return () => unsubs.forEach((fn) => fn());
+		};
 	}, [refreshSttFiles, refreshBinaries]);
 
 	// ── Submit ────────────────────────────────────────────────────────────────
@@ -317,10 +167,12 @@ export default function SettingsScreen() {
 		});
 		await settingsService.updateShortcuts(data.pttShortcut, data.ttsShortcut);
 		logger.info(
-			`SettingsScreen: settings saved — PTT='${data.pttShortcut}' TTS='${data.ttsShortcut}'`,
+			`SettingsScreen: settings saved - PTT='${data.pttShortcut}' TTS='${data.ttsShortcut}'`,
 		);
 		setSaved(true);
-		setTimeout(() => setSaved(false), 3000);
+		setTimeout(() => {
+			setSaved(false);
+		}, 3000);
 	};
 
 	// ── Device dropdown options ───────────────────────────────────────────────
@@ -328,25 +180,15 @@ export default function SettingsScreen() {
 	const inputOptions = inputDevices.map((d) => ({ value: d.id, label: d.name }));
 	const outputOptions = outputDevices.map((d) => ({ value: d.id, label: d.name }));
 
+	const recommendedSttModel = systemRamGb !== null ? getRecommendedSttModel(systemRamGb) : null;
+
 	return (
 		<div className="min-h-screen bg-bg-base text-text">
 			{/* Header */}
 			<header className="border-b border-border px-6 py-4 flex items-center justify-between">
 				<div className="flex items-center gap-3">
 					<div className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-primary">
-						<svg
-							className="w-4 h-4 text-white"
-							fill="none"
-							viewBox="0 0 24 24"
-							stroke="currentColor"
-							strokeWidth={2}
-						>
-							<path
-								strokeLinecap="round"
-								strokeLinejoin="round"
-								d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
-							/>
-						</svg>
+						<Mic className="w-4 h-4 text-white" />
 					</div>
 					<h1 className="text-lg font-semibold text-text">Vocyl Settings</h1>
 				</div>
@@ -403,14 +245,23 @@ export default function SettingsScreen() {
 						<SettingsRow
 							label="Push-to-Talk"
 							description="Hold to record. Text is typed at your cursor on release."
+							error={errors.pttShortcut?.message}
 						>
 							<Controller
 								name="pttShortcut"
 								control={control}
+								rules={{
+									validate: (val) =>
+										val !== watch('ttsShortcut') ||
+										'Cannot be the same as Read Selection shortcut',
+								}}
 								render={({ field }) => (
 									<KeybindRecorder
 										value={field.value}
-										onChange={field.onChange}
+										onChange={(v) => {
+											field.onChange(v);
+											void trigger('ttsShortcut');
+										}}
 									/>
 								)}
 							/>
@@ -418,14 +269,23 @@ export default function SettingsScreen() {
 						<SettingsRow
 							label="Read Selection"
 							description="Press once to start reading selected text. Press again to stop."
+							error={errors.ttsShortcut?.message}
 						>
 							<Controller
 								name="ttsShortcut"
 								control={control}
+								rules={{
+									validate: (val) =>
+										val !== watch('pttShortcut') ||
+										'Cannot be the same as Push-to-Talk shortcut',
+								}}
 								render={({ field }) => (
 									<KeybindRecorder
 										value={field.value}
-										onChange={field.onChange}
+										onChange={(v) => {
+											field.onChange(v);
+											void trigger('pttShortcut');
+										}}
 									/>
 								)}
 							/>
@@ -450,9 +310,10 @@ export default function SettingsScreen() {
 										downloadedFiles={sttFiles}
 										dlStates={dlStates}
 										activeId={activeSttModel}
-										onUse={(id) =>
-											setValue('activeSttModel', id as SttModelSize)
-										}
+										recommended={recommendedSttModel === model.id}
+										onUse={(id) => {
+											setValue('activeSttModel', id as SttModelSize);
+										}}
 										onRefresh={() => void refreshSttFiles()}
 									/>
 								))}
@@ -468,7 +329,14 @@ export default function SettingsScreen() {
 							isInstalled={kokoroInstalled}
 							dlKey="tts/kokoro"
 							dlStates={dlStates}
-							onDownload={() => modelService.downloadKokoro().catch(console.error)}
+							onDownload={async () => {
+								await modelService.downloadKokoro();
+								await refreshBinaries();
+							}}
+							onDelete={async () => {
+								await modelService.deleteKokoro();
+								await refreshBinaries();
+							}}
 						/>
 
 						<SettingsRow
@@ -483,7 +351,7 @@ export default function SettingsScreen() {
 										options={KOKORO_VOICES}
 										value={field.value}
 										onChange={field.onChange}
-										placeholder="Select voice…"
+										placeholder="Select voice..."
 										className="w-56"
 									/>
 								)}
@@ -504,19 +372,7 @@ export default function SettingsScreen() {
 						<div className="flex items-center gap-3">
 							{saved && (
 								<span className="text-sm text-success flex items-center gap-1.5">
-									<svg
-										className="w-4 h-4"
-										fill="none"
-										viewBox="0 0 24 24"
-										stroke="currentColor"
-										strokeWidth={2}
-									>
-										<path
-											strokeLinecap="round"
-											strokeLinejoin="round"
-											d="M5 13l4 4L19 7"
-										/>
-									</svg>
+									<Check className="w-4 h-4" />
 									Saved
 								</span>
 							)}

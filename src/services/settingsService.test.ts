@@ -4,9 +4,7 @@ import { settingsService } from './settingsService';
 import type { VocylSettings } from '@models/settings';
 import { SETTINGS_SCHEMA_VERSION } from '@models/settings';
 
-vi.mock('@tauri-apps/api/core', () => ({
-	invoke: vi.fn(),
-}));
+vi.mock('@tauri-apps/api/core');
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -63,6 +61,33 @@ describe('settingsService', () => {
 			expect(mockInvoke).toHaveBeenCalledWith('save_settings', {
 				settings: mockSettings,
 			});
+		});
+	});
+
+	describe('updateShortcuts', () => {
+		it('calls the correct Tauri command with ptt and tts shortcuts', async () => {
+			mockInvoke.mockResolvedValueOnce(undefined);
+			await settingsService.updateShortcuts('CmdOrCtrl+Shift+F8', 'CmdOrCtrl+Shift+F9');
+			expect(mockInvoke).toHaveBeenCalledWith('update_shortcuts', {
+				ptt: 'CmdOrCtrl+Shift+F8',
+				tts: 'CmdOrCtrl+Shift+F9',
+			});
+		});
+	});
+
+	describe('suspendShortcuts', () => {
+		it('calls the correct Tauri command', async () => {
+			mockInvoke.mockResolvedValueOnce(undefined);
+			await settingsService.suspendShortcuts();
+			expect(mockInvoke).toHaveBeenCalledWith('suspend_shortcuts');
+		});
+	});
+
+	describe('resumeShortcuts', () => {
+		it('calls the correct Tauri command', async () => {
+			mockInvoke.mockResolvedValueOnce(undefined);
+			await settingsService.resumeShortcuts();
+			expect(mockInvoke).toHaveBeenCalledWith('resume_shortcuts');
 		});
 	});
 });

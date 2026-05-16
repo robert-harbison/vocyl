@@ -233,7 +233,7 @@ pub async fn download_kokoro_package(app: tauri::AppHandle) -> Result<(), String
     let tmp_path = dest.join("kokoro.tar.bz2.tmp");
     stream_download(&app, KOKORO_PKG_URL, &tmp_path, "tts", "kokoro").await?;
 
-    log::info!("Kokoro download complete, extracting…");
+    log::info!("Kokoro download complete, extracting...");
     let dest_dir = dest.clone();
     let tmp = tmp_path.clone();
     tokio::task::spawn_blocking(move || -> Result<(), String> {
@@ -253,3 +253,20 @@ pub async fn download_kokoro_package(app: tauri::AppHandle) -> Result<(), String
     let _ = app.emit("download-complete", serde_json::json!({ "dir": "tts", "filename": "kokoro" }));
     Ok(())
 }
+
+#[tauri::command]
+pub fn delete_kokoro_package(app: tauri::AppHandle) -> Result<(), String> {
+    let dir = model_dir(&app, "tts")?.join("kokoro-en-v0_19");
+    if dir.exists() {
+        log::info!("Deleting Kokoro package at {:?}", dir);
+        std::fs::remove_dir_all(&dir).map_err(|e| {
+            log::error!("Failed to delete Kokoro package: {}", e);
+            e.to_string()
+        })?;
+        log::info!("Kokoro package deleted successfully");
+    } else {
+        log::debug!("delete_kokoro_package: directory does not exist, nothing to do");
+    }
+    Ok(())
+}
+

@@ -6,6 +6,7 @@ import * as settingsServiceModule from '@services/settingsService';
 import { SETTINGS_SCHEMA_VERSION, DEFAULT_SETTINGS } from '@models/settings';
 import type { VocylSettings } from '@models/settings';
 
+vi.mock('@services/logService');
 vi.mock('@services/settingsService', () => ({
 	settingsService: {
 		exists: vi.fn(),
