@@ -33,7 +33,7 @@ use enigo::{Direction, Enigo, Key, Keyboard};
 
 use crate::text_bridge::{
     TextBridge, TextBridgeCapabilities, TextBridgeError,
-    clipboard_fallback::{FallbackConfig, get_selection_via_copy, insert_via_paste},
+    clipboard_fallback::{FallbackConfig, insert_via_paste},
 };
 
 // ── COM types ─────────────────────────────────────────────────────────────────
@@ -93,6 +93,18 @@ extern "system" {
 extern "system" {
     fn SysFreeString(bstr: BSTR);
 }
+
+#[link(name = "user32")]
+extern "system" {
+    fn GetForegroundWindow() -> *mut c_void;
+    fn GetWindowThreadProcessId(hwnd: *mut c_void, lpdw_process_id: *mut u32) -> u32;
+    fn GetCurrentThreadId() -> u32;
+    fn AttachThreadInput(id_attach: u32, id_attach_to: u32, f_attach: i32) -> i32;
+    fn GetFocus() -> *mut c_void;
+    fn SendMessageW(hwnd: *mut c_void, msg: u32, w_param: usize, l_param: isize) -> isize;
+}
+
+const WM_COPY: u32 = 0x0301;
 
 // ── RAII COM pointer ──────────────────────────────────────────────────────────
 
@@ -300,11 +312,145 @@ unsafe fn uia_get_selected_text_inner() -> Result<Option<String>, String> {
     Ok(if text.is_empty() { None } else { Some(text) })
 }
 
-// ── Key simulation helpers ────────────────────────────────────────────────────
+// ── Focused-window helper ─────────────────────────────────────────────────────
 
-// Windows requires Key::C (virtual key code VK_C) for Ctrl+C, not
-// Key::Unicode('c'). enigo's WinAPI backend sends WM_CHAR for Unicode keys,
-// which most apps ignore for shortcut handling.
+/// Returns the HWND of the focused control inside the foreground window,
+/// attaching to the foreground thread if needed. Falls back to the top-level
+/// foreground window if `GetFocus` returns null.
+unsafe fn get_focused_hwnd() -> *mut c_void {
+    let foreground = GetForegroundWindow();
+    if foreground.is_null() {
+        return std::ptr::null_mut();
+    }
+    let fg_tid = GetWindowThreadProcessId(foreground, std::ptr::null_mut());
+    let our_tid = GetCurrentThreadId();
+    if fg_tid == our_tid {
+        let f = GetFocus();
+        return if f.is_null() { foreground } else { f };
+    }
+    // Cross-process: attach input so GetFocus sees the other thread's focus.
+    let attached = AttachThreadInput(our_tid, fg_tid, 1) != 0;
+    let focused = GetFocus();
+    if attached {
+        AttachThreadInput(our_tid, fg_tid, 0);
+    }
+    if focused.is_null() { foreground } else { focused }
+}
+
+// ── Windows clipboard-based selection reader ──────────────────────────────────
+
+/// Read selected text via a two-path clipboard strategy:
+///
+/// **Path 1 — WM_COPY** (preferred): sends the standard copy window message
+/// directly to the focused control. No keyboard simulation, no modifier keys,
+/// no menu-bar side-effects. Works for all standard Win32 controls (Edit,
+/// RichEdit, WebView2, etc.) including Notepad.
+///
+/// **Path 2 — Ctrl+C** (fallback): keyboard simulation for apps that ignore
+/// WM_COPY (Chrome, Electron, some custom renderers). These apps use their
+/// own menu/shortcut layer rather than DefWindowProc, so a bare Alt KEYUP does
+/// not activate the Win32 menu bar in them — releasing dangling modifiers from
+/// the TTS shortcut is safe here.
+///
+/// The two paths are tried in sequence, each with a unique sentinel so we can
+/// tell whether the app wrote to the clipboard.
+fn win_get_selection_via_clipboard() -> Result<Option<String>, TextBridgeError> {
+    use arboard::Clipboard;
+    use enigo::Settings;
+
+    // Unique sentinel: lets us detect a no-op clipboard (app copied nothing).
+    const SENTINEL: &str = "\x01vocyl-copy-check\x01";
+
+    fn new_cb() -> Result<Clipboard, TextBridgeError> {
+        Clipboard::new().map_err(|e| TextBridgeError::ClipboardError(e.to_string()))
+    }
+
+    // Save old content and arm the sentinel before either path runs.
+    let saved = {
+        let mut cb = new_cb()?;
+        let s = cb.get_text().ok();
+        cb.set_text(SENTINEL)
+            .map_err(|e| TextBridgeError::ClipboardError(e.to_string()))?;
+        s
+    };
+
+    let restore = |saved: Option<String>| {
+        if let Some(ref t) = saved {
+            if !t.is_empty() {
+                if let Ok(mut cb) = Clipboard::new() {
+                    cb.set_text(t).ok();
+                }
+            }
+        }
+    };
+
+    // ── Path 1: WM_COPY ───────────────────────────────────────────────────────
+    // SendMessageW is synchronous — the clipboard is updated before it returns.
+    unsafe {
+        let hwnd = get_focused_hwnd();
+        if !hwnd.is_null() {
+            SendMessageW(hwnd, WM_COPY, 0, 0);
+        }
+    }
+
+    {
+        let text = new_cb().ok()
+            .and_then(|mut cb| cb.get_text().ok())
+            .unwrap_or_default();
+        if !text.is_empty() && text != SENTINEL {
+            log::debug!("Windows: WM_COPY got {} chars", text.len());
+            restore(saved);
+            return Ok(Some(text));
+        }
+    }
+
+    log::debug!("Windows: WM_COPY returned nothing, trying Ctrl+C");
+
+    // ── Path 2: Ctrl+C keyboard simulation ───────────────────────────────────
+    // RegisterHotKey delivers the modifier KEYDOWN to the focused app before
+    // the hotkey fires (only the letter key is suppressed). Release those
+    // stray modifiers so our Ctrl+C is not seen as e.g. Alt+Ctrl+C.
+    //
+    // Why Ctrl before Alt: Chrome/Vivaldi/Electron check GetKeyState(VK_CONTROL)
+    // inside their WM_SYSKEYUP handler. Seeing Ctrl held, they treat the event
+    // as an Alt+Ctrl combination and skip app-menu activation. Classic Win32
+    // apps (Notepad etc.) use DefWindowProc which is only cleared by WM_KEYDOWN
+    // — but those apps handle WM_COPY above and never reach this path.
+    let mut enigo = Enigo::new(&Settings::default())
+        .map_err(|e| TextBridgeError::InputSimulationError(format!("{e:?}")))?;
+    enigo.key(Key::Control, Direction::Press).ok();
+    enigo.key(Key::Alt, Direction::Release).ok();
+    enigo.key(Key::Shift, Direction::Release).ok();
+    enigo.key(Key::Control, Direction::Release).ok();
+    enigo.key(Key::Meta, Direction::Release).ok();
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // Windows requires Key::C (VK_C), not Key::Unicode('c'): enigo sends
+    // WM_CHAR for Unicode keys which apps ignore for shortcut handling.
+    enigo.key(Key::Control, Direction::Press)
+        .map_err(|e| TextBridgeError::InputSimulationError(format!("{e:?}")))?;
+    enigo.key(Key::C, Direction::Click)
+        .map_err(|e| TextBridgeError::InputSimulationError(format!("{e:?}")))?;
+    enigo.key(Key::Control, Direction::Release)
+        .map_err(|e| TextBridgeError::InputSimulationError(format!("{e:?}")))?;
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
+    let text = new_cb().ok()
+        .and_then(|mut cb| cb.get_text().ok())
+        .unwrap_or_default();
+
+    restore(saved);
+
+    if !text.is_empty() && text != SENTINEL {
+        log::debug!("Windows: Ctrl+C got {} chars", text.len());
+        Ok(Some(text))
+    } else {
+        Ok(None)
+    }
+}
+
+// ── Key simulation helpers (paste only) ──────────────────────────────────────
+
 fn win_send_paste(enigo: &mut Enigo) -> Result<(), TextBridgeError> {
     enigo.key(Key::Control, Direction::Press).map_err(|e| TextBridgeError::InputSimulationError(format!("{e:?}")))?;
     enigo.key(Key::Unicode('v'), Direction::Click).map_err(|e| TextBridgeError::InputSimulationError(format!("{e:?}")))?;
@@ -312,26 +458,21 @@ fn win_send_paste(enigo: &mut Enigo) -> Result<(), TextBridgeError> {
     Ok(())
 }
 
-fn win_send_copy(enigo: &mut Enigo) -> Result<(), TextBridgeError> {
-    enigo.key(Key::Control, Direction::Press).map_err(|e| TextBridgeError::InputSimulationError(format!("{e:?}")))?;
-    enigo.key(Key::C, Direction::Click).map_err(|e| TextBridgeError::InputSimulationError(format!("{e:?}")))?;
-    enigo.key(Key::Control, Direction::Release).map_err(|e| TextBridgeError::InputSimulationError(format!("{e:?}")))?;
-    Ok(())
+fn win_noop_copy(_enigo: &mut Enigo) -> Result<(), TextBridgeError> {
+    Ok(()) // copy path is handled by win_get_selection_via_clipboard, not FallbackConfig
 }
 
-fn win_release_modifiers(enigo: &mut Enigo) {
-    enigo.key(Key::Alt, Direction::Release).ok();
-    enigo.key(Key::Shift, Direction::Release).ok();
-    enigo.key(Key::Control, Direction::Release).ok();
-    enigo.key(Key::Meta, Direction::Release).ok();
+fn win_noop_release(_enigo: &mut Enigo) {
+    // PTT injection runs 200 ms after the shortcut is released — keys are
+    // already physically released by then. No stray modifiers to clear.
 }
 
-fn windows_fallback_config() -> FallbackConfig {
+fn windows_paste_config() -> FallbackConfig {
     FallbackConfig {
         send_paste: win_send_paste,
-        send_copy: win_send_copy,
-        release_modifiers: win_release_modifiers,
-        // Windows clipboard is message-based - no setup delay needed.
+        send_copy: win_noop_copy,
+        release_modifiers: win_noop_release,
+        // Windows clipboard is message-based — no ownership delay needed.
         // Brief post-paste wait lets the target app consume the paste message.
         pre_paste_ms: 0,
         post_paste_ms: 150,
@@ -363,28 +504,34 @@ impl TextBridge for WindowsTextBridge {
     }
 
     fn get_selected_text(&self) -> Result<Option<String>, TextBridgeError> {
+        // UIA is tried first because it reads selection without touching the
+        // clipboard. If it returns text we use it directly. If it returns
+        // nothing — whether because of a structural failure (no TextPattern)
+        // or because a partially-implemented TextPattern reports empty — we
+        // always fall through to the clipboard fallback. Many apps that expose
+        // TextPattern still return null/empty from GetSelection even when text
+        // is visually selected, so trusting Ok(None) from UIA is not safe.
         match uia_get_selected_text() {
-            Ok(result) => {
-                log::debug!(
-                    "UIA selection: {} chars",
-                    result.as_deref().map_or(0, str::len)
-                );
-                Ok(result)
+            Ok(Some(text)) => {
+                log::debug!("UIA selection: {} chars", text.len());
+                return Ok(Some(text));
+            }
+            Ok(None) => {
+                log::debug!("UIA: TextPattern reports no selection, trying clipboard fallback");
             }
             Err(e) => {
                 log::debug!("UIA unavailable ({e}), using clipboard fallback");
-                get_selection_via_copy(&windows_fallback_config())
             }
         }
+        win_get_selection_via_clipboard()
     }
 
     fn insert_text(&self, text: &str) -> Result<(), TextBridgeError> {
-        insert_via_paste(text, &windows_fallback_config())
+        insert_via_paste(text, &windows_paste_config())
     }
 
     fn replace_selection(&self, text: &str) -> Result<(), TextBridgeError> {
-        // Clipboard paste naturally replaces any active selection.
-        insert_via_paste(text, &windows_fallback_config())
+        insert_via_paste(text, &windows_paste_config())
     }
 }
 

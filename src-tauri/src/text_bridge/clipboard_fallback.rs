@@ -29,6 +29,7 @@ use crate::text_bridge::TextBridgeError;
 /// Per-platform fallback configuration. Callers supply the key combos and
 /// timing that are correct for their platform; this module contains no
 /// platform-specific `#[cfg]` guards.
+#[allow(dead_code)]
 pub struct FallbackConfig {
     /// Send the paste shortcut (Ctrl+V / Cmd+V) to the focused application.
     pub send_paste: fn(&mut Enigo) -> Result<(), TextBridgeError>,
@@ -122,6 +123,7 @@ pub fn insert_via_paste(text: &str, config: &FallbackConfig) -> Result<(), TextB
 /// relinquishes CLIPBOARD ownership; on Windows/macOS it is a no-op but
 /// harmless. The subsequent read uses a fresh instance that has no stale
 /// ownership state and queries the actual current clipboard owner.
+#[allow(dead_code)]
 pub fn get_selection_via_copy(
     config: &FallbackConfig,
 ) -> Result<Option<String>, TextBridgeError> {
