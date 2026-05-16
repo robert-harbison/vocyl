@@ -1,4 +1,8 @@
 [env]
+# Windows Resource Compiler — needed by tauri-winres to embed the app manifest/icon.
+# Not in PATH by default; only present after sourcing vcvars64. Pinned here so
+# `cargo build` works from any terminal without a VS Developer Command Prompt.
+RC = { value = "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.26100.0\\x64\\rc.exe", force = false }
 # Disable AVX2/FMA/F16C in the whisper.cpp (GGML) build so the AppImage runs on
 # any x86_64 CPU, not only those with Haswell+ SIMD (Sandy/Ivy Bridge and many
 # server/VM CPUs lack these). whisper-rs-sys build.rs reads these and passes
@@ -6,3 +10,20 @@
 WHISPER_NO_AVX2 = "1"
 WHISPER_NO_FMA  = "1"
 WHISPER_NO_F16C = "1"
+
+# Force whisper-rs-sys (whisper.cpp) to build with the static MSVC CRT (/MT) so
+# it matches sherpa-onnx-sys which also uses /MT. Without this the linker refuses
+# to combine the two libraries (LNK2038 RuntimeLibrary mismatch).
+# whisper-rs-sys build.rs forwards all CMAKE_* env vars straight to CMake.
+CMAKE_MSVC_RUNTIME_LIBRARY = "MultiThreaded"
+# whisper.cpp declares cmake_minimum_required(VERSION 3.5), so CMake runs in
+# pre-3.15 compat mode and ignores CMAKE_MSVC_RUNTIME_LIBRARY by default.
+# CMP0091=NEW forces the policy active regardless of cmake_minimum_required.
+CMAKE_POLICY_DEFAULT_CMP0091 = "NEW"
+
+[target.x86_64-pc-windows-msvc]
+# Rust defaults to /MD (dynamic CRT), but sherpa-onnx-sys and whisper-rs-sys both
+# compile their C++ with /MT (static CRT). Mixing /MD and /MT in one binary
+# produces LNK2038 + LNK2005 conflicts between msvcprt.lib and libcpmt.lib.
+# +crt-static makes Rust also use /MT so all three agree on the same CRT.
+rustflags = ["-C", "target-feature=+crt-static"]

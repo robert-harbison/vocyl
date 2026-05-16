@@ -41,3 +41,10 @@ Both Rust backend and JavaScript frontend messages are written to the same file.
 | **Linux**   | `~/.local/share/com.sparkinex.vocyl/logs/vocyl.log` |
 
 Log level is `INFO` by default. The log file is automatically rotated by `tauri-plugin-log`.
+
+# Default Shortcuts
+
+| Action                | Windows/Linux | macOS        |
+| --------------------- | ------------- | ------------ |
+| STT (Push-to-talk)    | `Alt + A`     | `Option + A` |
+| TTS (Speak / Overlay) | `Alt + S`     | `Option + S` |
