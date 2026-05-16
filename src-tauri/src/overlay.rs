@@ -5,9 +5,10 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 use crate::{
     constants::{OVERLAY_H, OVERLAY_W, OVERLAY_Y},
+    platform::{get_selected_text, inject_text},
     settings::SettingsCache,
-    stt::{emit_overlay_state, inject_text, start_recording, stop_and_transcribe, SttState},
-    tts::{get_selected_text, start_speaking, stop_speaking, TtsState},
+    stt::{emit_overlay_state, start_recording, stop_and_transcribe, SttState},
+    tts::{start_speaking, stop_speaking, TtsState},
 };
 
 // ── Setup ─────────────────────────────────────────────────────────────────────

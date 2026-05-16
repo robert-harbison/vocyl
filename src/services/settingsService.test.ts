@@ -16,8 +16,6 @@ const mockSettings: VocylSettings = {
 	outputDeviceId: null,
 	pttShortcut: 'CmdOrCtrl+Shift+F8',
 	ttsShortcut: 'CmdOrCtrl+Shift+F9',
-	ttsEngine: 'kokoro',
-	activeTtsModelId: null,
 	ttsVoice: 'af_heart',
 	activeSttModel: null,
 };

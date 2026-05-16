@@ -1,5 +1,4 @@
 use std::{
-    path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -17,10 +16,6 @@ use crate::{
     models::model_dir,
     settings::SettingsCache,
 };
-
-// Windows-only: subprocess path needs the binary location and hound for WAV writing.
-#[cfg(target_os = "windows")]
-use crate::models::get_whisper_bin;
 
 // ── Managed state ─────────────────────────────────────────────────────────────
 
@@ -45,7 +40,7 @@ impl SttState {
 // ── Recording ─────────────────────────────────────────────────────────────────
 
 /// Start recording on a background thread. Returns immediately.
-/// Emits `overlay-state: "listening"` via app handle on success.
+/// Emits `overlay-state: "listening"` on success.
 pub fn start_recording<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     device_name: Option<String>,
@@ -189,9 +184,7 @@ pub fn start_recording<R: tauri::Runtime>(
 
 // ── Transcription ─────────────────────────────────────────────────────────────
 
-/// Stop recording and transcribe. Platform dispatch:
-/// - Windows  → subprocess (whisper-cli.exe)
-/// - Linux/macOS → native whisper-rs compiled into the binary
+/// Stop recording and transcribe using the native whisper-rs library.
 pub async fn stop_and_transcribe<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
 ) -> Result<String, String> {
@@ -240,169 +233,24 @@ pub async fn stop_and_transcribe<R: tauri::Runtime>(
     }
 
     log::info!("STT: transcribing with model '{}'", model_size);
-
-    // ── Windows: run whisper-cli.exe subprocess ───────────────────────────────
-    #[cfg(target_os = "windows")]
-    {
-        let whisper_bin = get_whisper_bin(app)?;
-        let result = transcribe_subprocess(whisper_bin, model_path, samples, sample_rate, channels).await;
-        match &result {
-            Ok(text) => log::info!("STT: transcription complete ({} chars)", text.len()),
-            Err(e) => log::error!("STT: transcription failed: {}", e),
-        }
-        return result;
+    let result = transcribe(model_path, samples, sample_rate, channels).await;
+    match &result {
+        Ok(text) => log::info!("STT: transcription complete ({} chars)", text.len()),
+        Err(e) => log::error!("STT: transcription failed: {}", e),
     }
-
-    // ── Linux / macOS: native whisper-rs compiled into the binary ─────────────
-    #[cfg(not(target_os = "windows"))]
-    {
-        let result = transcribe_native(model_path, samples, sample_rate, channels).await;
-        match &result {
-            Ok(text) => log::info!("STT: transcription complete ({} chars)", text.len()),
-            Err(e) => log::error!("STT: transcription failed: {}", e),
-        }
-        result
-    }
+    result
 }
 
-// ── Windows subprocess path ───────────────────────────────────────────────────
+// ── whisper-rs inference ──────────────────────────────────────────────────────
 
-#[cfg(target_os = "windows")]
-async fn transcribe_subprocess(
-    whisper_bin: PathBuf,
-    model_path: PathBuf,
-    samples: Vec<f32>,
-    sample_rate: u32,
-    channels: u16,
-) -> Result<String, String> {
-    // Mix to mono then resample to 16 kHz — whisper.cpp's internal resampler
-    // produces garbage (hallucinated dots) when given raw multi-channel /
-    // high-sample-rate audio on Windows.
-    let mono: Vec<f32> = if channels > 1 {
-        samples
-            .chunks_exact(channels as usize)
-            .map(|frame| frame.iter().sum::<f32>() / channels as f32)
-            .collect()
-    } else {
-        samples
-    };
-    let mut audio_16k = if sample_rate != 16_000 {
-        log::debug!("STT: resampling from {} Hz to 16 kHz", sample_rate);
-        resample_linear(&mono, sample_rate, 16_000)
-    } else {
-        mono
-    };
-
-    // Prepend 300 ms of silence. Whisper's first segment often hallucinates
-    // consonant repetitions (e.g. "nnnnn") when real speech starts at sample 0
-    // because the model expects a brief quiet onset. The padding costs nothing
-    // in transcription accuracy and reliably fixes the first-word corruption.
-    let pad = vec![0.0f32; (16_000.0 * 0.3) as usize];
-    audio_16k.splice(0..0, pad);
-
-    let wav_path = write_temp_wav(&audio_16k)?;
-    log::debug!("STT: WAV written to {}", wav_path.display());
-
-    let output = tokio::process::Command::new(&whisper_bin)
-        .args([
-            "-m",
-            model_path.to_str().unwrap_or_default(),
-            "-f",
-            wav_path.to_str().unwrap_or_default(),
-            "-nt",
-            "-l",
-            "en",
-            "-t",
-            "4",
-        ])
-        .output()
-        .await
-        .map_err(|e| {
-            log::error!("STT: failed to run whisper subprocess: {}", e);
-            format!("Failed to run whisper: {e}")
-        })?;
-
-    std::fs::remove_file(&wav_path).ok();
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        log::error!("STT: whisper exited non-zero: {}", stderr);
-        return Err(format!("Whisper exited with error: {stderr}"));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    let transcript = stdout
-        .lines()
-        .map(|l| l.trim())
-        .filter(|l| !l.is_empty())
-        .filter(|l| !l.starts_with("whisper_") && !l.starts_with("ggml_") && !l.starts_with("main:"))
-        .filter(|l| !(l.starts_with('[') && l.ends_with(']')))
-        .collect::<Vec<_>>()
-        .join(" ");
-
-    Ok(transcript)
-}
-
-#[cfg(target_os = "windows")]
-fn write_temp_wav(samples: &[f32]) -> Result<PathBuf, String> {
-    let path = std::env::temp_dir().join(format!(
-        "vocyl_stt_{}.wav",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis()
-    ));
-
-    let spec = hound::WavSpec {
-        channels: 1,
-        sample_rate: 16_000,
-        bits_per_sample: 16,
-        sample_format: hound::SampleFormat::Int,
-    };
-
-    let mut writer = hound::WavWriter::create(&path, spec).map_err(|e| e.to_string())?;
-    for &s in samples {
-        // Clamp to [-1, 1] before converting to avoid i16 overflow on hot samples.
-        let s = s.clamp(-1.0, 1.0);
-        let pcm = (s * 32767.0) as i16;
-        writer.write_sample(pcm).map_err(|e| e.to_string())?;
-    }
-    writer.finalize().map_err(|e| e.to_string())?;
-
-    Ok(path)
-}
-
-// ── Linux / macOS native path (whisper-rs 0.16) ───────────────────────────────
-
-#[cfg(not(target_os = "windows"))]
-async fn transcribe_native(
-    model_path: PathBuf,
+async fn transcribe(
+    model_path: std::path::PathBuf,
     samples: Vec<f32>,
     sample_rate: u32,
     channels: u16,
 ) -> Result<String, String> {
     tokio::task::spawn_blocking(move || -> Result<String, String> {
-        // Mix multi-channel audio down to mono.
-        let mono: Vec<f32> = if channels > 1 {
-            samples
-                .chunks_exact(channels as usize)
-                .map(|frame| frame.iter().sum::<f32>() / channels as f32)
-                .collect()
-        } else {
-            samples
-        };
-
-        // Whisper requires exactly 16 kHz. Resample if the capture device used a different rate.
-        let mut audio = if sample_rate != 16_000 {
-            resample_linear(&mono, sample_rate, 16_000)
-        } else {
-            mono
-        };
-
-        // Prepend 300 ms of silence — fixes first-word hallucination at segment 0.
-        let pad = vec![0.0f32; (16_000.0 * 0.3) as usize];
-        audio.splice(0..0, pad);
+        let audio = prepare_audio_for_whisper(samples, sample_rate, channels);
 
         let ctx = whisper_rs::WhisperContext::new_with_params(
             model_path.to_str().unwrap_or_default(),
@@ -446,8 +294,36 @@ async fn transcribe_native(
     .map_err(|e| e.to_string())?
 }
 
-/// Linear resampler for voice audio. Adequate quality for speech; avoids an
-/// extra dependency. Whisper.cpp requires exactly 16 kHz mono f32 input.
+// ── Audio preparation ─────────────────────────────────────────────────────────
+
+/// Mix to mono, resample to 16 kHz, and prepend 300 ms of silence.
+/// Whisper requires exactly 16 kHz mono f32. The silence padding prevents
+/// first-word hallucination that occurs when real speech starts at sample 0.
+fn prepare_audio_for_whisper(samples: Vec<f32>, sample_rate: u32, channels: u16) -> Vec<f32> {
+    let mono: Vec<f32> = if channels > 1 {
+        samples
+            .chunks_exact(channels as usize)
+            .map(|frame| frame.iter().sum::<f32>() / channels as f32)
+            .collect()
+    } else {
+        samples
+    };
+
+    let mut audio = if sample_rate != 16_000 {
+        log::debug!("STT: resampling from {} Hz to 16 kHz", sample_rate);
+        resample_linear(&mono, sample_rate, 16_000)
+    } else {
+        mono
+    };
+
+    let pad = vec![0.0f32; (16_000.0 * 0.3) as usize];
+    audio.splice(0..0, pad);
+    audio
+}
+
+// ── Linear resampler ──────────────────────────────────────────────────────────
+
+/// Linear resampler adequate for speech. Whisper requires exactly 16 kHz mono f32.
 fn resample_linear(samples: &[f32], from_hz: u32, to_hz: u32) -> Vec<f32> {
     let ratio = from_hz as f64 / to_hz as f64;
     let out_len = (samples.len() as f64 / ratio).round() as usize;
@@ -461,149 +337,6 @@ fn resample_linear(samples: &[f32], from_hz: u32, to_hz: u32) -> Vec<f32> {
             a + (b - a) * frac
         })
         .collect()
-}
-
-// ── Text injection ────────────────────────────────────────────────────────────
-
-pub fn inject_text(text: &str) -> Result<(), String> {
-    log::info!("Injecting transcript ({} chars) into active window", text.len());
-
-    #[cfg(target_os = "windows")]
-    {
-        use arboard::Clipboard;
-        use enigo::{Direction, Enigo, Key, Keyboard, Settings};
-
-        let mut clipboard = Clipboard::new().map_err(|e| format!("Clipboard error: {e}"))?;
-
-        // Save whatever was on the clipboard so we can restore it afterwards.
-        let saved = clipboard.get_text().ok();
-        log::debug!("STT: saved clipboard ({} chars)", saved.as_deref().unwrap_or("").len());
-
-        clipboard.set_text(text).map_err(|e| {
-            log::error!("Failed to copy transcript to clipboard: {}", e);
-            format!("Failed to copy transcript to clipboard: {e}")
-        })?;
-
-        let mut enigo = Enigo::new(&Settings::default())
-            .map_err(|e| format!("Failed to create input injector: {e:?}"))?;
-        enigo.key(Key::Control, Direction::Press)
-            .map_err(|e| format!("Key injection failed: {e:?}"))?;
-        enigo.key(Key::Unicode('v'), Direction::Click)
-            .map_err(|e| format!("Key injection failed: {e:?}"))?;
-        enigo.key(Key::Control, Direction::Release)
-            .map_err(|e| format!("Key injection failed: {e:?}"))?;
-
-        // Wait for the target application to finish reading the clipboard.
-        std::thread::sleep(std::time::Duration::from_millis(150));
-
-        // Restore the user's original clipboard content.
-        if let Some(ref original) = saved {
-            if let Err(e) = clipboard.set_text(original.as_str()) {
-                log::warn!("STT: failed to restore clipboard: {}", e);
-            } else {
-                log::debug!("STT: clipboard restored");
-            }
-        }
-
-        log::info!("Text injected via clipboard paste");
-        return Ok(());
-    }
-
-    // Linux/X11: enigo.text() uses XSendEvent which most apps ignore.
-    // Clipboard + Ctrl+V is reliable across all X11 / Wayland (XWayland) apps.
-    //
-    // IMPORTANT LINUX SUBTLETY: arboard implements X11 clipboard ownership with
-    // a background thread that responds to SelectionRequest events from the
-    // pasting application. Dropping the Clipboard object kills that thread, so
-    // we must keep it alive until the target app has fully read the selection.
-    #[cfg(target_os = "linux")]
-    {
-        use arboard::Clipboard;
-        use enigo::{Direction, Enigo, Key, Keyboard, Settings};
-
-        let mut clipboard = Clipboard::new().map_err(|e| format!("Clipboard error: {e}"))?;
-
-        // Save whatever was on the clipboard.
-        let saved = clipboard.get_text().ok();
-        log::debug!("STT: saved clipboard ({} chars)", saved.as_deref().unwrap_or("").len());
-
-        clipboard.set_text(text)
-            .map_err(|e| format!("Failed to copy transcript to clipboard: {e}"))?;
-
-        // Give arboard's background thread time to acquire X11 selection ownership
-        // before we send the key event.
-        std::thread::sleep(std::time::Duration::from_millis(100));
-
-        let mut enigo = Enigo::new(&Settings::default())
-            .map_err(|e| format!("Failed to create input injector: {e:?}"))?;
-        enigo.key(Key::Control, Direction::Press)
-            .map_err(|e| format!("Key injection failed: {e:?}"))?;
-        enigo.key(Key::Unicode('v'), Direction::Click)
-            .map_err(|e| format!("Key injection failed: {e:?}"))?;
-        enigo.key(Key::Control, Direction::Release)
-            .map_err(|e| format!("Key injection failed: {e:?}"))?;
-
-        // Keep the Clipboard (and therefore the X11 selection) alive until the
-        // target application has had time to read it.
-        std::thread::sleep(std::time::Duration::from_millis(250));
-
-        // Restore original clipboard content.
-        if let Some(ref original) = saved {
-            if let Err(e) = clipboard.set_text(original.as_str()) {
-                log::warn!("STT: failed to restore clipboard: {}", e);
-            } else {
-                // Give arboard time to take ownership with the restored text.
-                std::thread::sleep(std::time::Duration::from_millis(50));
-                log::debug!("STT: clipboard restored");
-            }
-        }
-
-        log::info!("Text injected via clipboard paste");
-        return Ok(());
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        use arboard::Clipboard;
-        use enigo::{Direction, Enigo, Key, Keyboard, Settings};
-
-        let mut clipboard = Clipboard::new().map_err(|e| format!("Clipboard error: {e}"))?;
-
-        // Save whatever was on the clipboard.
-        let saved = clipboard.get_text().ok();
-        log::debug!("STT: saved clipboard ({} chars)", saved.as_deref().unwrap_or("").len());
-
-        clipboard.set_text(text)
-            .map_err(|e| format!("Failed to copy transcript to clipboard: {e}"))?;
-
-        // Small settle delay before sending keys.
-        std::thread::sleep(std::time::Duration::from_millis(50));
-
-        let mut enigo = Enigo::new(&Settings::default())
-            .map_err(|e| format!("Failed to create input injector: {e:?}"))?;
-        // macOS uses Cmd+V for paste.
-        enigo.key(Key::Meta, Direction::Press)
-            .map_err(|e| format!("Key injection failed: {e:?}"))?;
-        enigo.key(Key::Unicode('v'), Direction::Click)
-            .map_err(|e| format!("Key injection failed: {e:?}"))?;
-        enigo.key(Key::Meta, Direction::Release)
-            .map_err(|e| format!("Key injection failed: {e:?}"))?;
-
-        // Wait for the paste to land before restoring.
-        std::thread::sleep(std::time::Duration::from_millis(150));
-
-        // Restore original clipboard content.
-        if let Some(ref original) = saved {
-            if let Err(e) = clipboard.set_text(original.as_str()) {
-                log::warn!("STT: failed to restore clipboard: {}", e);
-            } else {
-                log::debug!("STT: clipboard restored");
-            }
-        }
-
-        log::info!("Text injected via clipboard paste (Cmd+V)");
-        Ok(())
-    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

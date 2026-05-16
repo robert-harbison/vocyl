@@ -5,7 +5,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { listen } from '@tauri-apps/api/event';
 import { clsx } from 'clsx';
 
-import { SETTINGS_SCHEMA_VERSION, type TtsEngine, type SttModelSize } from '@models/settings';
+import { SETTINGS_SCHEMA_VERSION, type SttModelSize } from '@models/settings';
 import { useSettingsContext } from '@contexts/SettingsContext';
 import Button from '@components/Button';
 import Dropdown from '@components/Dropdown';
@@ -17,7 +17,7 @@ import { audioService, type AudioDevice } from '@services/audioService';
 import { modelService } from '@services/modelService';
 import { settingsService } from '@services/settingsService';
 import { logger } from '@services/logService';
-import { KOKORO_VOICES, PIPER_VOICES, STT_MODELS, type ModelFile } from '@/constants/models';
+import { KOKORO_VOICES, STT_MODELS, type ModelFile } from '@/constants/models';
 
 // ── Local types ───────────────────────────────────────────────────────────────
 
@@ -26,8 +26,6 @@ interface FormValues {
 	outputDeviceId: string | null;
 	pttShortcut: string;
 	ttsShortcut: string;
-	ttsEngine: TtsEngine;
-	activeTtsModelId: string | null;
 	ttsVoice: string | null;
 	activeSttModel: SttModelSize | null;
 }
@@ -58,7 +56,7 @@ interface ModelRowProps {
 	dlStates: DownloadStates;
 	activeId: string | null;
 	onUse: (id: string) => void;
-	onRefresh: (dir: 'tts' | 'stt') => void;
+	onRefresh: () => void;
 }
 
 function ModelRow({
@@ -89,7 +87,7 @@ function ModelRow({
 			await modelService.downloadFile(dir, file.filename, file.url);
 		}
 		logger.info(`ModelRow: download complete for ${dir}/${id}`);
-		onRefresh(dir);
+		onRefresh();
 	}, [files, dir, onRefresh, id]);
 
 	const handleDelete = useCallback(async () => {
@@ -100,7 +98,7 @@ function ModelRow({
 			}
 		}
 		logger.info(`ModelRow: delete complete for ${dir}/${id}`);
-		onRefresh(dir);
+		onRefresh();
 	}, [files, dir, downloadedFiles, onRefresh, id]);
 
 	return (
@@ -221,10 +219,7 @@ export default function SettingsScreen() {
 
 	const [inputDevices, setInputDevices] = useState<AudioDevice[]>([]);
 	const [outputDevices, setOutputDevices] = useState<AudioDevice[]>([]);
-	const [ttsFiles, setTtsFiles] = useState<string[]>([]);
 	const [sttFiles, setSttFiles] = useState<string[]>([]);
-	const [piperInstalled, setPiperInstalled] = useState(false);
-	const [whisperInstalled, setWhisperInstalled] = useState(false);
 	const [kokoroInstalled, setKokoroInstalled] = useState(false);
 	const [dlStates, setDlStates] = useState<DownloadStates>({});
 
@@ -240,43 +235,25 @@ export default function SettingsScreen() {
 			outputDeviceId: settings.outputDeviceId ?? '',
 			pttShortcut: settings.pttShortcut,
 			ttsShortcut: settings.ttsShortcut,
-			ttsEngine: settings.ttsEngine,
-			activeTtsModelId: settings.activeTtsModelId,
 			ttsVoice: settings.ttsVoice,
 			activeSttModel: settings.activeSttModel,
 		},
 	});
 
-	const ttsEngine = watch('ttsEngine');
-	const activeTtsModelId = watch('activeTtsModelId');
 	const activeSttModel = watch('activeSttModel');
 
 	// ── Data loading ──────────────────────────────────────────────────────────
 
-	const refreshFiles = useCallback(async (dir?: 'tts' | 'stt' | 'both') => {
-		logger.debug(`SettingsScreen: refreshing files for dir=${dir ?? 'both'}`);
-		if (!dir || dir === 'tts' || dir === 'both') {
-			const files = await modelService.listDownloadedFiles('tts');
-			setTtsFiles(files);
-		}
-		if (!dir || dir === 'stt' || dir === 'both') {
-			const files = await modelService.listDownloadedFiles('stt');
-			setSttFiles(files);
-		}
+	const refreshSttFiles = useCallback(async () => {
+		logger.debug('SettingsScreen: refreshing STT model files');
+		const files = await modelService.listDownloadedFiles('stt');
+		setSttFiles(files);
 	}, []);
 
 	const refreshBinaries = useCallback(async () => {
 		logger.debug('SettingsScreen: checking installed binaries');
-		const [piper, whisper, kokoro] = await Promise.all([
-			modelService.isPiperInstalled(),
-			modelService.isWhisperInstalled(),
-			modelService.isKokoroInstalled(),
-		]);
-		logger.info(
-			`SettingsScreen: binaries — piper=${String(piper)} whisper=${String(whisper)} kokoro=${String(kokoro)}`,
-		);
-		setPiperInstalled(piper);
-		setWhisperInstalled(whisper);
+		const kokoro = await modelService.isKokoroInstalled();
+		logger.info(`SettingsScreen: kokoro=${String(kokoro)}`);
 		setKokoroInstalled(kokoro);
 	}, []);
 
@@ -293,10 +270,10 @@ export default function SettingsScreen() {
 			setInputDevices(inputs);
 			setOutputDevices(outputs);
 
-			await Promise.all([refreshFiles('both'), refreshBinaries()]);
+			await Promise.all([refreshSttFiles(), refreshBinaries()]);
 			logger.info('SettingsScreen: initial load complete');
 		})();
-	}, [refreshFiles, refreshBinaries]);
+	}, [refreshSttFiles, refreshBinaries]);
 
 	// ── Download event listeners ──────────────────────────────────────────────
 
@@ -317,13 +294,13 @@ export default function SettingsScreen() {
 				delete next[key];
 				return next;
 			});
-			const dir = e.payload.dir as 'tts' | 'stt' | string;
-			if (dir === 'tts' || dir === 'stt') void refreshFiles(dir);
-			if (dir === 'binaries') void refreshBinaries();
+			const dir = e.payload.dir;
+			if (dir === 'stt') void refreshSttFiles();
+			if (dir === 'tts') void refreshBinaries();
 		}).then((fn) => unsubs.push(fn));
 
 		return () => unsubs.forEach((fn) => fn());
-	}, [refreshFiles, refreshBinaries]);
+	}, [refreshSttFiles, refreshBinaries]);
 
 	// ── Submit ────────────────────────────────────────────────────────────────
 
@@ -335,14 +312,12 @@ export default function SettingsScreen() {
 			outputDeviceId: data.outputDeviceId === '' ? null : data.outputDeviceId,
 			pttShortcut: data.pttShortcut,
 			ttsShortcut: data.ttsShortcut,
-			ttsEngine: data.ttsEngine,
-			activeTtsModelId: data.activeTtsModelId,
 			ttsVoice: data.ttsVoice,
 			activeSttModel: data.activeSttModel,
 		});
 		await settingsService.updateShortcuts(data.pttShortcut, data.ttsShortcut);
 		logger.info(
-			`SettingsScreen: settings saved — engine=${data.ttsEngine} PTT='${data.pttShortcut}' TTS='${data.ttsShortcut}'`,
+			`SettingsScreen: settings saved — PTT='${data.pttShortcut}' TTS='${data.ttsShortcut}'`,
 		);
 		setSaved(true);
 		setTimeout(() => setSaved(false), 3000);
@@ -459,15 +434,6 @@ export default function SettingsScreen() {
 
 					{/* ── Speech-to-Text ── */}
 					<SettingsSection title="Speech-to-Text">
-						<BinaryRow
-							label="Whisper Runtime"
-							description="Speech recognition engine. Built into the app on Linux and macOS; requires a separate download on Windows."
-							isInstalled={whisperInstalled}
-							dlKey="binaries/whisper"
-							dlStates={dlStates}
-							onDownload={() => modelService.downloadWhisper().catch(console.error)}
-						/>
-
 						<div className="px-4 py-2">
 							<p className="text-xs font-semibold uppercase tracking-widest text-text-faint mb-2">
 								Whisper Models
@@ -487,7 +453,7 @@ export default function SettingsScreen() {
 										onUse={(id) =>
 											setValue('activeSttModel', id as SttModelSize)
 										}
-										onRefresh={(dir) => void refreshFiles(dir)}
+										onRefresh={() => void refreshSttFiles()}
 									/>
 								))}
 							</div>
@@ -496,112 +462,33 @@ export default function SettingsScreen() {
 
 					{/* ── Text-to-Speech ── */}
 					<SettingsSection title="Text-to-Speech">
-						{/* Engine selector */}
+						<BinaryRow
+							label="Kokoro English Model"
+							description="Voice model + phoneme data (~90 MB). The inference runtime is built into the app."
+							isInstalled={kokoroInstalled}
+							dlKey="tts/kokoro"
+							dlStates={dlStates}
+							onDownload={() => modelService.downloadKokoro().catch(console.error)}
+						/>
+
 						<SettingsRow
-							label="Engine"
-							description="Kokoro is higher quality. Piper is lighter for low-end systems."
+							label="Voice"
+							description="Speaker voice used for Kokoro synthesis."
 						>
 							<Controller
-								name="ttsEngine"
+								name="ttsVoice"
 								control={control}
 								render={({ field }) => (
-									<div className="flex gap-3">
-										{(['kokoro', 'piper'] as TtsEngine[]).map((engine) => (
-											<label
-												key={engine}
-												className="flex items-center gap-2 cursor-pointer select-none"
-											>
-												<input
-													type="radio"
-													value={engine}
-													checked={field.value === engine}
-													onChange={() => {
-														field.onChange(engine);
-														setValue('activeTtsModelId', null);
-													}}
-													className="accent-primary"
-												/>
-												<span className="text-sm text-text capitalize">
-													{engine}
-												</span>
-											</label>
-										))}
-									</div>
+									<Dropdown
+										options={KOKORO_VOICES}
+										value={field.value}
+										onChange={field.onChange}
+										placeholder="Select voice…"
+										className="w-56"
+									/>
 								)}
 							/>
 						</SettingsRow>
-
-						{/* ── Kokoro section ── */}
-						{ttsEngine === 'kokoro' && (
-							<>
-								<BinaryRow
-									label="Kokoro English Model"
-									description="Voice model + phoneme data (~90 MB). The inference runtime is built into the app."
-									isInstalled={kokoroInstalled}
-									dlKey="tts/kokoro"
-									dlStates={dlStates}
-									onDownload={() =>
-										modelService.downloadKokoro().catch(console.error)
-									}
-								/>
-
-								<SettingsRow
-									label="Voice"
-									description="Speaker voice used for Kokoro synthesis."
-								>
-									<Controller
-										name="ttsVoice"
-										control={control}
-										render={({ field }) => (
-											<Dropdown
-												options={KOKORO_VOICES}
-												value={field.value}
-												onChange={field.onChange}
-												placeholder="Select voice…"
-												className="w-56"
-											/>
-										)}
-									/>
-								</SettingsRow>
-							</>
-						)}
-
-						{/* ── Piper section ── */}
-						{ttsEngine === 'piper' && (
-							<>
-								<BinaryRow
-									label="Piper Runtime"
-									description="Required to run Piper text-to-speech."
-									isInstalled={piperInstalled}
-									dlKey="binaries/piper"
-									dlStates={dlStates}
-									onDownload={() => void modelService.downloadPiper()}
-								/>
-
-								<div className="px-4 py-2">
-									<p className="text-xs font-semibold uppercase tracking-widest text-text-faint mb-2">
-										Piper Voices
-									</p>
-									<div className="bg-bg-base rounded-lg border border-border divide-y divide-border">
-										{PIPER_VOICES.map((voice) => (
-											<ModelRow
-												key={voice.id}
-												id={voice.id}
-												label={voice.label}
-												sizeMb={voice.sizeMb}
-												files={voice.files}
-												dir="tts"
-												downloadedFiles={ttsFiles}
-												dlStates={dlStates}
-												activeId={activeTtsModelId}
-												onUse={(id) => setValue('activeTtsModelId', id)}
-												onRefresh={(dir) => void refreshFiles(dir)}
-											/>
-										))}
-									</div>
-								</div>
-							</>
-						)}
 					</SettingsSection>
 
 					{/* ── Footer ── */}

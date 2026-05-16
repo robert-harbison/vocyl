@@ -132,7 +132,7 @@ fn parse_pactl_output(text: &str, input: bool) -> Vec<AudioDevice> {
 
 /// Skip raw-hardware and plugin devices that are exclusive-access or serve no
 /// purpose in a GUI picker (hw:, plughw:, dmix:, surround channels, etc.).
-fn is_useful_alsa_device(name: &str) -> bool {
+fn is_useful_alsa_device(#[cfg(target_os = "linux")] name: &str, #[cfg(not(target_os = "linux"))] _name: &str) -> bool {
     #[cfg(target_os = "linux")]
     {
         const SKIP: &[&str] = &[

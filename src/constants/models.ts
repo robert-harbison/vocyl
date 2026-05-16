@@ -5,20 +5,6 @@ export interface ModelFile {
 	url: string;
 }
 
-export interface KokoroModel {
-	id: string;
-	label: string;
-	sizeMb: number;
-	files: ModelFile[];
-}
-
-export interface PiperVoice {
-	id: string;
-	label: string;
-	sizeMb: number;
-	files: ModelFile[];
-}
-
 export interface SttModel {
 	id: SttModelSize;
 	label: string;
@@ -38,95 +24,6 @@ export const KOKORO_VOICES = [
 	{ value: 'bf_isabella', label: 'Isabella (GB, Female)' },
 	{ value: 'bm_george', label: 'George (GB, Male)' },
 	{ value: 'bm_lewis', label: 'Lewis (GB, Male)' },
-];
-
-// Kokoro is downloaded as a single self-contained package via download_kokoro_package.
-// The KOKORO_MODELS array is kept for display purposes only (size label etc.).
-export const KOKORO_MODELS: KokoroModel[] = [
-	{
-		id: 'kokoro-en-v0_19',
-		label: 'Kokoro English v0.19',
-		sizeMb: 90,
-		files: [], // package download handled by download_kokoro_package command
-	},
-];
-
-export const PIPER_VOICES: PiperVoice[] = [
-	{
-		id: 'en_US-lessac-medium',
-		label: 'Lessac (US, Female)',
-		sizeMb: 63,
-		files: [
-			{
-				filename: 'en_US-lessac-medium.onnx',
-				url: 'https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx',
-			},
-			{
-				filename: 'en_US-lessac-medium.onnx.json',
-				url: 'https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json',
-			},
-		],
-	},
-	{
-		id: 'en_US-ryan-medium',
-		label: 'Ryan (US, Male)',
-		sizeMb: 63,
-		files: [
-			{
-				filename: 'en_US-ryan-medium.onnx',
-				url: 'https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/ryan/medium/en_US-ryan-medium.onnx',
-			},
-			{
-				filename: 'en_US-ryan-medium.onnx.json',
-				url: 'https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json',
-			},
-		],
-	},
-	{
-		id: 'en_US-amy-medium',
-		label: 'Amy (US, Female)',
-		sizeMb: 63,
-		files: [
-			{
-				filename: 'en_US-amy-medium.onnx',
-				url: 'https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/amy/medium/en_US-amy-medium.onnx',
-			},
-			{
-				filename: 'en_US-amy-medium.onnx.json',
-				url: 'https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/amy/medium/en_US-amy-medium.onnx.json',
-			},
-		],
-	},
-	{
-		id: 'en_GB-alan-medium',
-		label: 'Alan (GB, Male)',
-		sizeMb: 63,
-		files: [
-			{
-				filename: 'en_GB-alan-medium.onnx',
-				url: 'https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/alan/medium/en_GB-alan-medium.onnx',
-			},
-			{
-				filename: 'en_GB-alan-medium.onnx.json',
-				url: 'https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/alan/medium/en_GB-alan-medium.onnx.json',
-			},
-		],
-	},
-	{
-		id: 'en_GB-jenny_dioco-medium',
-		label: 'Jenny (GB, Female)',
-		sizeMb: 63,
-		files: [
-			{
-				filename: 'en_GB-jenny_dioco-medium.onnx',
-				url: 'https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/jenny_dioco/medium/en_GB-jenny_dioco-medium.onnx',
-			},
-			{
-				filename: 'en_GB-jenny_dioco-medium.onnx.json',
-				url: 'https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_GB/jenny_dioco/medium/en_GB-jenny_dioco-medium.onnx.json',
-			},
-		],
-	},
 ];
 
 export const STT_MODELS: SttModel[] = [

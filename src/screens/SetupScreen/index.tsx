@@ -58,11 +58,11 @@ export default function SetupScreen() {
 						<ul className="space-y-1 pl-4 list-disc">
 							<li>
 								Push-to-talk:{' '}
-								<span className="font-mono text-text-muted">⌃⇧F8</span>
+								<span className="font-mono text-text-muted">Alt+A</span>
 							</li>
 							<li>
 								Read selection:{' '}
-								<span className="font-mono text-text-muted">⌃⇧F9</span>
+								<span className="font-mono text-text-muted">Alt+S</span>
 							</li>
 						</ul>
 					</div>

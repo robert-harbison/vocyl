@@ -43,27 +43,21 @@ tokio = { version = "1", features = ["fs", "process", "time", "sync", "macros", 
 # Text injection at cursor
 enigo = "0.3"
 
-# WAV file writing for STT recordings on Windows (subprocess path)
-hound = "3.5"
-
-# ZIP archive extraction for binary downloads
-zip = "2"
-
-# tar.bz2 and tar.gz extraction for model/binary packages
+# tar.bz2 extraction for Kokoro model package
 bzip2 = "0.4"
 tar = "0.4"
-flate2 = "1"
 
-# Clipboard read/write for TTS selected-text capture
+# Clipboard read/write for TTS selected-text capture and injection
 arboard = "3"
 
 # Kokoro TTS — native ONNX inference, model stays loaded between calls
 sherpa-onnx = "1"
 
-# Whisper STT — native inference on Linux/macOS.
-# On Windows, whisper-rs requires LLVM/clang for bindgen; the subprocess
-# (whisper-cli.exe) is used instead so no extra toolchain setup is needed.
-[target.'cfg(not(target_os = "windows"))'.dependencies]
+# Whisper STT — native inference on all platforms.
+# Requires LLVM/libclang at build time (for bindgen). Install once:
+#   Windows: winget install LLVM.LLVM  (then set LIBCLANG_PATH in env)
+#   macOS:   brew install llvm
+#   Linux:   apt install libclang-dev
 whisper-rs = "0.16"
 
 # Faster incremental builds in dev, small binary in release
@@ -77,4 +71,3 @@ lto = "thin"
 opt-level = 3
 panic = "abort"
 strip = "symbols"
-

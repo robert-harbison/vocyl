@@ -9,11 +9,7 @@ export const modelService = {
 	deleteFile: (dir: 'tts' | 'stt', filename: string) =>
 		invoke<void>('delete_file', { dir, filename }),
 
-	isPiperInstalled: () => invoke<boolean>('is_piper_installed'),
-	isWhisperInstalled: () => invoke<boolean>('is_whisper_installed'),
 	isKokoroInstalled: () => invoke<boolean>('is_kokoro_installed'),
 
-	downloadPiper: () => invoke<void>('download_piper'),
-	downloadWhisper: () => invoke<void>('download_whisper'),
 	downloadKokoro: () => invoke<void>('download_kokoro_package'),
 };

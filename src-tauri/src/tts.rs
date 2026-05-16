@@ -9,26 +9,17 @@ use std::{
 
 use tauri::Manager;
 
-use enigo::Keyboard;
-
 use crate::{
-    models::{get_kokoro_model_dir, get_piper_bin, model_dir},
+    models::get_kokoro_model_dir,
     settings::SettingsCache,
     stt::emit_overlay_state,
 };
 
 // ── Kokoro engine cache ───────────────────────────────────────────────────────
 
-/// Holds the loaded Kokoro TTS engine so the ONNX model is only read from
-/// disk once. Subsequent TTS calls skip model loading entirely and go straight
-/// to inference (~0.5–1 s for a sentence vs ~3–5 s cold-start).
-///
-/// `sherpa_onnx::OfflineTts` already implements `Send`, so this struct is
-/// `Send + Sync` automatically and safe to hold in Tauri managed state.
 struct KokoroHandle {
     tts: sherpa_onnx::OfflineTts,
-    /// The model dir this handle was built from. If settings point to a
-    /// different directory the handle is rebuilt on next use.
+    /// The model dir this handle was built from. Rebuilt if settings change.
     model_dir: PathBuf,
 }
 
@@ -37,8 +28,6 @@ struct KokoroHandle {
 pub struct TtsState {
     pub is_playing: Arc<AtomicBool>,
     pub stop_flag: Arc<AtomicBool>,
-    /// Cached Kokoro engine — `None` until first use, then kept alive for the
-    /// lifetime of the app (or until the model directory changes).
     kokoro: Arc<std::sync::Mutex<Option<KokoroHandle>>>,
 }
 
@@ -52,89 +41,9 @@ impl TtsState {
     }
 }
 
-// ── Get selected text ─────────────────────────────────────────────────────────
-
-/// Copy the current selection via the platform shortcut, then return it.
-///
-/// Strategy (all platforms):
-///   1. Save the current clipboard, then **clear** it.
-///   2. Send the platform copy shortcut (Ctrl+C / Cmd+C).
-///   3. Read the clipboard.
-///      - Non-empty  → something was selected; return it.
-///      - Empty      → nothing was selected (shortcut was a no-op); return "".
-///   4. Restore the original clipboard so the user's data is not lost.
-///
-/// Clearing before the shortcut is the key insight that makes "nothing selected"
-/// detectable on every platform:
-///   • Windows/macOS: Ctrl+C / Cmd+C is a no-op when nothing is selected.
-///   • Linux/X11: X11's PRIMARY selection persists even after text is
-///     deselected, so reading PRIMARY is unreliable.  The Ctrl+C + clear
-///     approach works correctly here too.
-pub fn get_selected_text() -> Result<String, String> {
-    use arboard::Clipboard;
-    use enigo::{Direction, Enigo, Key, Settings};
-
-    let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
-
-    // Save whatever is in the clipboard so we can restore it later.
-    let saved = clipboard.get_text().ok();
-
-    // Clear the clipboard. If the copy shortcut does nothing (no selection),
-    // the clipboard will remain empty and we can return "" correctly.
-    clipboard.set_text("").map_err(|e| e.to_string())?;
-
-    let mut enigo = Enigo::new(&Settings::default())
-        .map_err(|e| format!("Failed to create input handler: {e:?}"))?;
-
-    // Release modifiers that may still be held from the global shortcut combo.
-    enigo.key(Key::Shift, Direction::Release).ok();
-    enigo.key(Key::Alt, Direction::Release).ok();
-    #[cfg(target_os = "macos")]
-    enigo.key(Key::Meta, Direction::Release).ok();
-
-    // Brief pause so modifier-release events settle before we send the copy key.
-    std::thread::sleep(Duration::from_millis(50));
-
-    // Send the platform copy shortcut.
-    #[cfg(target_os = "macos")]
-    {
-        enigo.key(Key::Meta, Direction::Press).map_err(|e| format!("{e:?}"))?;
-        enigo.key(Key::Unicode('c'), Direction::Click).map_err(|e| format!("{e:?}"))?;
-        enigo.key(Key::Meta, Direction::Release).map_err(|e| format!("{e:?}"))?;
-    }
-    #[cfg(target_os = "windows")]
-    {
-        enigo.key(Key::Control, Direction::Press).map_err(|e| format!("{e:?}"))?;
-        enigo.key(Key::C, Direction::Click).map_err(|e| format!("{e:?}"))?;
-        enigo.key(Key::Control, Direction::Release).map_err(|e| format!("{e:?}"))?;
-    }
-    #[cfg(target_os = "linux")]
-    {
-        enigo.key(Key::Control, Direction::Press).map_err(|e| format!("{e:?}"))?;
-        enigo.key(Key::Unicode('c'), Direction::Click).map_err(|e| format!("{e:?}"))?;
-        enigo.key(Key::Control, Direction::Release).map_err(|e| format!("{e:?}"))?;
-    }
-
-    // Give the target app time to update the clipboard.
-    std::thread::sleep(Duration::from_millis(200));
-
-    // Read the result (empty string means no text was selected).
-    let selected = clipboard.get_text().unwrap_or_default();
-    log::debug!("TTS: clipboard after copy shortcut: {} chars", selected.len());
-
-    // Restore the user's original clipboard content.
-    match saved {
-        Some(old) if !old.is_empty() => { clipboard.set_text(old).ok(); }
-        _ => {}
-    }
-
-    Ok(selected)
-}
-
 // ── TTS speak ─────────────────────────────────────────────────────────────────
 
-/// Start speaking the given text using the engine configured in settings.
-/// Emits `overlay-state` events and hides the overlay when done.
+/// Start speaking `text` using the Kokoro engine.
 pub fn start_speaking<R: tauri::Runtime>(app: &tauri::AppHandle<R>, text: String) {
     log::info!("TTS: starting synthesis ({} chars)", text.len());
     let tts = app.state::<TtsState>();
@@ -153,16 +62,7 @@ pub fn start_speaking<R: tauri::Runtime>(app: &tauri::AppHandle<R>, text: String
             .unwrap()
             .clone();
 
-        log::info!("TTS: using engine '{}'", settings.tts_engine);
-        let result = match settings.tts_engine.as_str() {
-            "piper" => speak_piper(&app_handle, &text, &settings, stop_flag.clone()).await,
-            "kokoro" => speak_kokoro(&app_handle, &text, &settings, stop_flag.clone()).await,
-            _ => {
-                let msg = format!("Unknown TTS engine: {}", settings.tts_engine);
-                log::error!("TTS: {}", msg);
-                Err(msg)
-            }
-        };
+        let result = speak_kokoro(&app_handle, &text, &settings, stop_flag).await;
 
         if let Err(e) = result {
             log::error!("TTS: synthesis error: {}", e);
@@ -182,21 +82,14 @@ pub fn start_speaking<R: tauri::Runtime>(app: &tauri::AppHandle<R>, text: String
 
 /// Stop ongoing TTS playback.
 pub fn stop_speaking<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
-    log::info!("TTS: stop requested by user");
-    let tts = app.state::<TtsState>();
-    tts.stop_flag.store(true, Ordering::SeqCst);
+    log::info!("TTS: stop requested");
+    app.state::<TtsState>().stop_flag.store(true, Ordering::SeqCst);
 }
 
-/// Pre-warm the Kokoro engine in the background so the first TTS call is fast.
-/// Call this once from app setup after managing `TtsState`.
+/// Pre-warm the Kokoro engine so the first call doesn't pay the model-load cost.
 pub fn prewarm_kokoro<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     let app = app.clone();
     std::thread::spawn(move || {
-        let settings = app.state::<SettingsCache>().0.lock().unwrap().clone();
-        if settings.tts_engine != "kokoro" {
-            log::debug!("TTS: pre-warm skipped (engine is '{}')", settings.tts_engine);
-            return;
-        }
         let model_dir = match get_kokoro_model_dir(&app) {
             Ok(d) => d,
             Err(e) => {
@@ -211,111 +104,44 @@ pub fn prewarm_kokoro<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
             return;
         }
         log::info!("TTS: pre-warming Kokoro model…");
-        let num_threads = std::thread::available_parallelism()
-            .map(|n| n.get().min(8))
-            .unwrap_or(4) as i32;
-        if let Ok(tts) = create_kokoro_engine(&model_dir, num_threads) {
+        if let Ok(tts) = create_kokoro_engine(&model_dir, num_threads()) {
             *guard = Some(KokoroHandle { tts, model_dir });
             log::info!("TTS: Kokoro pre-warm complete");
         } else {
-            log::warn!("TTS: Kokoro pre-warm failed — model may load on first use instead");
+            log::warn!("TTS: Kokoro pre-warm failed — model loads on first use instead");
         }
     });
 }
 
-// ── Piper subprocess ──────────────────────────────────────────────────────────
+// ── Shared audio output helper ────────────────────────────────────────────────
 
-async fn speak_piper<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
-    text: &str,
-    settings: &crate::settings::VocylSettings,
-    stop_flag: Arc<AtomicBool>,
-) -> Result<(), String> {
-    let piper_bin = get_piper_bin(app)?;
-
-    let voice_id = settings
-        .active_tts_model_id
-        .as_deref()
-        .ok_or_else(|| {
-            log::warn!("TTS: no Piper voice selected");
-            "No TTS voice selected. Choose one in Settings → Text-to-Speech.".to_string()
-        })?;
-
-    log::info!("TTS: Piper synthesis with voice '{}'", voice_id);
-    let model_filename = format!("{voice_id}.onnx");
-    let model_path = model_dir(app, "tts")?.join(&model_filename);
-
-    if !model_path.exists() {
-        log::error!("TTS: Piper model file not found: {}", model_path.display());
-        return Err(format!(
-            "Piper voice model '{model_filename}' not found. Download it in Settings → Text-to-Speech."
-        ));
-    }
-
-    let tmp_wav = std::env::temp_dir().join(format!(
-        "vocyl_tts_{}.wav",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis()
-    ));
-
-    let tmp_txt = tmp_wav.with_extension("txt");
-    std::fs::write(&tmp_txt, text).map_err(|e| e.to_string())?;
-
-    let mut child = tokio::process::Command::new(&piper_bin)
-        .args([
-            "--model",
-            model_path.to_str().unwrap_or_default(),
-            "--output-file",
-            tmp_wav.to_str().unwrap_or_default(),
-        ])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| {
-            log::error!("TTS: failed to start piper process: {}", e);
-            format!("Failed to start piper: {e}")
-        })?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        stdin.write_all(text.as_bytes()).await.map_err(|e| e.to_string())?;
-        stdin.shutdown().await.ok();
-    }
-
-    let status = child.wait().await.map_err(|e| e.to_string())?;
-    std::fs::remove_file(&tmp_txt).ok();
-
-    if !status.success() {
-        log::error!("TTS: Piper synthesis failed (exit code {:?})", status.code());
-        return Err("Piper synthesis failed".to_string());
-    }
-    if !tmp_wav.exists() {
-        log::error!("TTS: Piper did not produce audio output");
-        return Err("Piper did not produce audio output".to_string());
-    }
-
-    log::info!("TTS: Piper synthesis done, playing audio");
-    let output_device = settings.output_device_id.clone();
-    let wav_path = tmp_wav.clone();
-    tokio::task::spawn_blocking(move || {
-        let result = play_wav(&wav_path, output_device, stop_flag);
-        std::fs::remove_file(&wav_path).ok();
-        result
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
-    Ok(())
+fn resolve_output_device(name: Option<&str>) -> Result<cpal::Device, String> {
+    use cpal::traits::{DeviceTrait, HostTrait};
+    let host = cpal::default_host();
+    let device = match name {
+        Some(n) => {
+            let found = host
+                .output_devices()
+                .map_err(|e| e.to_string())?
+                .find(|d| d.name().ok().as_deref() == Some(n));
+            match found {
+                Some(d) => d,
+                None => {
+                    log::warn!("TTS: output device '{}' not found, using default", n);
+                    host.default_output_device()
+                        .ok_or_else(|| "No output device found".to_string())?
+                }
+            }
+        }
+        None => host
+            .default_output_device()
+            .ok_or_else(|| "No output device found".to_string())?,
+    };
+    Ok(device)
 }
 
 // ── Sentence splitting ────────────────────────────────────────────────────────
 
-/// Split text into synthesis-sized chunks.
-/// Primary splits at sentence endings; long chunks are further divided at
-/// commas/semicolons so no single chunk causes a multi-second wait.
 fn split_sentences(text: &str) -> Vec<String> {
     let mut sentences: Vec<String> = Vec::new();
     let mut current = String::new();
@@ -335,21 +161,13 @@ fn split_sentences(text: &str) -> Vec<String> {
         sentences.push(trimmed);
     }
 
-    // Further split any chunk that is very long (no sentence punctuation)
     sentences
         .into_iter()
-        .flat_map(|s| {
-            if s.len() > 200 {
-                split_at_clause(&s)
-            } else {
-                vec![s]
-            }
-        })
+        .flat_map(|s| if s.len() > 200 { split_at_clause(&s) } else { vec![s] })
         .filter(|s| !s.trim().is_empty())
         .collect()
 }
 
-/// Split a long string at clause boundaries (comma, semicolon, colon).
 fn split_at_clause(text: &str) -> Vec<String> {
     let mut chunks = Vec::new();
     let mut current = String::new();
@@ -371,9 +189,8 @@ fn split_at_clause(text: &str) -> Vec<String> {
     chunks
 }
 
-// ── Kokoro native engine (sherpa-onnx Rust crate) ─────────────────────────────
+// ── Kokoro native engine (sherpa-onnx) ────────────────────────────────────────
 
-/// Maps a Kokoro voice name to the speaker ID used by kokoro-en-v0_19.
 fn kokoro_sid(voice: &str) -> i32 {
     match voice {
         "af" | "af_heart" => 0,
@@ -391,7 +208,6 @@ fn kokoro_sid(voice: &str) -> i32 {
     }
 }
 
-/// Build an [`OfflineTtsConfig`] for the Kokoro model at `model_dir`.
 fn build_kokoro_config(
     model_dir: &PathBuf,
     num_threads: i32,
@@ -413,29 +229,26 @@ fn build_kokoro_config(
             provider: Some(provider.to_string()),
             ..Default::default()
         },
-        // Kokoro only supports max_num_sentences = 1.
         max_num_sentences: 1,
         ..Default::default()
     }
 }
 
-/// Create an [`OfflineTts`] engine.
-/// On Windows, DirectML (GPU) is tried first and falls back to CPU.
-/// On macOS and Linux, CPU is used directly.
 fn create_kokoro_engine(
     model_dir: &PathBuf,
     num_threads: i32,
 ) -> Result<sherpa_onnx::OfflineTts, String> {
+    // On Windows, try DirectML (GPU acceleration) first, then fall back to CPU.
     #[cfg(target_os = "windows")]
-    {
-        if let Some(tts) = sherpa_onnx::OfflineTts::create(
-            &build_kokoro_config(model_dir, num_threads, "directml"),
-        ) {
-            log::info!("TTS: Kokoro engine initialised on DirectML (GPU)");
-            return Ok(tts);
-        }
-        log::warn!("TTS: DirectML unavailable, falling back to CPU");
+    if let Some(tts) = sherpa_onnx::OfflineTts::create(
+        &build_kokoro_config(model_dir, num_threads, "directml"),
+    ) {
+        log::info!("TTS: Kokoro engine initialised on DirectML (GPU)");
+        return Ok(tts);
     }
+
+    #[cfg(target_os = "windows")]
+    log::warn!("TTS: DirectML unavailable, falling back to CPU");
 
     sherpa_onnx::OfflineTts::create(&build_kokoro_config(model_dir, num_threads, "cpu"))
         .ok_or_else(|| {
@@ -454,30 +267,24 @@ async fn speak_kokoro<R: tauri::Runtime>(
     let model_dir = get_kokoro_model_dir(app)?;
     let voice = settings.tts_voice.as_deref().unwrap_or("af");
     let sid = kokoro_sid(voice);
-    log::info!("TTS: Kokoro synthesis with voice '{}' (sid={})", voice, sid);
+    log::info!("TTS: Kokoro voice '{}' (sid={})", voice, sid);
     let output_device = settings.output_device_id.clone();
     let kokoro_arc = app.state::<TtsState>().kokoro.clone();
-
-    let num_threads = std::thread::available_parallelism()
-        .map(|n| n.get().min(8))
-        .unwrap_or(4) as i32;
+    let n_threads = num_threads();
 
     let sentences = split_sentences(text);
     if sentences.is_empty() {
-        log::info!("TTS: text produced no sentences after splitting, nothing to speak");
+        log::info!("TTS: no sentences to speak");
         return Ok(());
     }
     log::info!("TTS: synthesising {} sentence(s)", sentences.len());
 
-    // Channel capacity 2: synthesizer stays one sentence ahead of the player.
     let (tx, rx) = tokio::sync::mpsc::channel::<(Vec<f32>, u32)>(2);
-
     let stop_synth = stop_flag.clone();
     let stop_play = stop_flag.clone();
 
-    // ── Synthesizer ───────────────────────────────────────────────────────────
+    // ── Synthesiser ───────────────────────────────────────────────────────────
     let synth_task = tokio::task::spawn_blocking(move || -> Result<(), String> {
-        // Load / validate cached model (mutex held only for this block).
         {
             let mut guard = kokoro_arc.lock().unwrap();
             let needs_reload = guard
@@ -485,8 +292,8 @@ async fn speak_kokoro<R: tauri::Runtime>(
                 .map(|h| h.model_dir != model_dir)
                 .unwrap_or(true);
             if needs_reload {
-                log::info!("TTS: loading Kokoro model (one-time cost)…");
-                let tts = create_kokoro_engine(&model_dir, num_threads)?;
+                log::info!("TTS: loading Kokoro model…");
+                let tts = create_kokoro_engine(&model_dir, n_threads)?;
                 *guard = Some(KokoroHandle { tts, model_dir: model_dir.clone() });
                 log::info!("TTS: Kokoro model loaded and cached");
             }
@@ -500,7 +307,7 @@ async fn speak_kokoro<R: tauri::Runtime>(
 
         for sentence in sentences {
             if stop_synth.load(Ordering::SeqCst) {
-                log::info!("TTS: synthesis cancelled by stop flag");
+                log::info!("TTS: synthesis cancelled");
                 break;
             }
 
@@ -533,28 +340,9 @@ async fn speak_kokoro<R: tauri::Runtime>(
 
     // ── Player ────────────────────────────────────────────────────────────────
     let play_task = tokio::task::spawn_blocking(move || -> Result<(), String> {
-        use cpal::traits::{DeviceTrait, HostTrait};
         use rodio::buffer::SamplesBuffer;
 
-        let host = cpal::default_host();
-        let device = match output_device.as_deref() {
-            Some(name) => {
-                log::debug!("TTS: using output device '{}'", name);
-                host
-                    .output_devices()
-                    .map_err(|e| e.to_string())?
-                    .find(|d| d.name().ok().as_deref() == Some(name))
-                    .unwrap_or_else(|| {
-                        log::warn!("TTS: output device '{}' not found, using default", name);
-                        host.default_output_device().expect("no output device")
-                    })
-            }
-            None => {
-                log::debug!("TTS: using default output device");
-                host.default_output_device().ok_or("No output device found")?
-            }
-        };
-
+        let device = resolve_output_device(output_device.as_deref())?;
         let (_stream, handle) =
             rodio::OutputStream::try_from_device(&device).map_err(|e| e.to_string())?;
         let sink = rodio::Sink::try_new(&handle).map_err(|e| e.to_string())?;
@@ -562,7 +350,7 @@ async fn speak_kokoro<R: tauri::Runtime>(
         let mut rx = rx;
         while let Some((samples, sample_rate)) = rx.blocking_recv() {
             if stop_play.load(Ordering::SeqCst) {
-                log::info!("TTS: playback cancelled by stop flag");
+                log::info!("TTS: playback cancelled");
                 break;
             }
             sink.append(SamplesBuffer::new(1, sample_rate, samples));
@@ -581,43 +369,10 @@ async fn speak_kokoro<R: tauri::Runtime>(
     Ok(())
 }
 
-// ── Audio playback ────────────────────────────────────────────────────────────
+// ── Utilities ─────────────────────────────────────────────────────────────────
 
-/// Play a WAV file from disk (used by the Piper engine).
-fn play_wav(
-    path: &PathBuf,
-    device_name: Option<String>,
-    stop_flag: Arc<AtomicBool>,
-) -> Result<(), String> {
-    use cpal::traits::{DeviceTrait, HostTrait};
-
-    let host = cpal::default_host();
-    let device = match device_name.as_deref() {
-        Some(name) => host
-            .output_devices()
-            .map_err(|e| e.to_string())?
-            .find(|d| d.name().ok().as_deref() == Some(name))
-            .unwrap_or_else(|| {
-                log::warn!("TTS: output device '{}' not found for playback, using default", name);
-                host.default_output_device().expect("no output device")
-            }),
-        None => host.default_output_device().ok_or("No output device found")?,
-    };
-
-    let (_stream, handle) =
-        rodio::OutputStream::try_from_device(&device).map_err(|e| e.to_string())?;
-
-    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    let source = rodio::Decoder::new(std::io::BufReader::new(file))
-        .map_err(|e| e.to_string())?;
-
-    let sink = rodio::Sink::try_new(&handle).map_err(|e| e.to_string())?;
-    sink.append(source);
-
-    while !sink.empty() && !stop_flag.load(Ordering::SeqCst) {
-        std::thread::sleep(Duration::from_millis(50));
-    }
-
-    sink.stop();
-    Ok(())
+fn num_threads() -> i32 {
+    std::thread::available_parallelism()
+        .map(|n| n.get().min(8))
+        .unwrap_or(4) as i32
 }

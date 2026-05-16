@@ -2,6 +2,7 @@ mod audio;
 mod constants;
 mod models;
 mod overlay;
+mod platform;
 mod settings;
 mod stt;
 mod tts;
@@ -59,11 +60,7 @@ pub fn run() {
             models::list_downloaded_files,
             models::download_file,
             models::delete_file,
-            models::is_piper_installed,
-            models::is_whisper_installed,
             models::is_kokoro_installed,
-            models::download_piper,
-            models::download_whisper,
             models::download_kokoro_package,
             // App
             exit_app,

@@ -1,6 +1,5 @@
 export const SETTINGS_SCHEMA_VERSION = 2;
 
-export type TtsEngine = 'kokoro' | 'piper';
 export type SttModelSize = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
 
 export interface VocylSettings {
@@ -9,8 +8,6 @@ export interface VocylSettings {
 	outputDeviceId: string | null;
 	pttShortcut: string;
 	ttsShortcut: string;
-	ttsEngine: TtsEngine;
-	activeTtsModelId: string | null;
 	ttsVoice: string | null;
 	activeSttModel: SttModelSize | null;
 }
@@ -19,10 +16,8 @@ export const DEFAULT_SETTINGS: VocylSettings = {
 	schemaVersion: SETTINGS_SCHEMA_VERSION,
 	inputDeviceId: null,
 	outputDeviceId: null,
-	pttShortcut: 'CmdOrCtrl+Shift+F8',
-	ttsShortcut: 'CmdOrCtrl+Shift+F9',
-	ttsEngine: 'kokoro',
-	activeTtsModelId: null,
+	pttShortcut: 'Alt+A',
+	ttsShortcut: 'Alt+S',
 	ttsVoice: 'af',
 	activeSttModel: null,
 };

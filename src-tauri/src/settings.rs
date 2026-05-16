@@ -18,9 +18,6 @@ fn default_ptt_shortcut() -> String {
 fn default_tts_shortcut() -> String {
     DEFAULT_TTS_SHORTCUT.to_string()
 }
-fn default_tts_engine() -> String {
-    "kokoro".to_string()
-}
 fn default_tts_voice() -> Option<String> {
     Some("af".to_string())
 }
@@ -42,11 +39,6 @@ pub struct VocylSettings {
     #[serde(default = "default_tts_shortcut")]
     pub tts_shortcut: String,
 
-    #[serde(default = "default_tts_engine")]
-    pub tts_engine: String,
-
-    pub active_tts_model_id: Option<String>,
-
     #[serde(default = "default_tts_voice")]
     pub tts_voice: Option<String>,
 
@@ -61,8 +53,6 @@ impl Default for VocylSettings {
             output_device_id: None,
             ptt_shortcut: default_ptt_shortcut(),
             tts_shortcut: default_tts_shortcut(),
-            tts_engine: default_tts_engine(),
-            active_tts_model_id: None,
             tts_voice: default_tts_voice(),
             active_stt_model: None,
         }
