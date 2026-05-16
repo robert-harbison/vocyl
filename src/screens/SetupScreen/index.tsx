@@ -131,7 +131,7 @@ export default function SetupScreen() {
 	// ── Finish wizard ─────────────────────────────────────────────────────────
 
 	const handleFinish = async () => {
-		logger.info('SetupScreen: wizard complete — saving settings');
+		logger.info('SetupScreen: wizard complete - saving settings');
 		setIsSaving(true);
 		try {
 			await saveSettings({
@@ -144,7 +144,7 @@ export default function SetupScreen() {
 			await settingsService.updateShortcuts(pttShortcut, ttsShortcut);
 			logger.info('SetupScreen: settings saved');
 		} catch (err) {
-			logger.error(`SetupScreen: save failed — ${String(err)}`);
+			logger.error(`SetupScreen: save failed - ${String(err)}`);
 			setIsSaving(false);
 		}
 	};

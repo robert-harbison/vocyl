@@ -1,4 +1,4 @@
-//! macOS text bridge — Accessibility API primary, clipboard fallback.
+//! macOS text bridge - Accessibility API primary, clipboard fallback.
 //!
 //! # Selection reading
 //! Reads the `AXSelectedText` attribute of the focused UI element via the
@@ -201,7 +201,7 @@ unsafe fn ax_get_selected_text_unsafe() -> Result<Option<String>, TextBridgeErro
         return Ok(None);
     }
 
-    // AXSelectedText — the text the user has highlighted
+    // AXSelectedText - the text the user has highlighted
     let selected_text_ref = ax_copy_attribute(focused_elem.as_raw(), "AXSelectedText");
     if selected_text_ref.is_null() {
         log::debug!("AX: AXSelectedText attribute unavailable");
@@ -294,7 +294,7 @@ impl TextBridge for MacosTextBridge {
             }
         } else {
             log::warn!(
-                "Accessibility permission not granted — using clipboard fallback. \
+                "Accessibility permission not granted - using clipboard fallback. \
                  Grant access in System Settings → Privacy & Security → Accessibility."
             );
         }

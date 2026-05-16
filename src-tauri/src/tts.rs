@@ -93,7 +93,7 @@ pub fn prewarm_kokoro<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
         let model_dir = match get_kokoro_model_dir(&app) {
             Ok(d) => d,
             Err(e) => {
-                log::debug!("TTS: pre-warm skipped — Kokoro not yet installed: {}", e);
+                log::debug!("TTS: pre-warm skipped - Kokoro not yet installed: {}", e);
                 return;
             }
         };
@@ -108,7 +108,7 @@ pub fn prewarm_kokoro<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
             *guard = Some(KokoroHandle { tts, model_dir });
             log::info!("TTS: Kokoro pre-warm complete");
         } else {
-            log::warn!("TTS: Kokoro pre-warm failed — model loads on first use instead");
+            log::warn!("TTS: Kokoro pre-warm failed - model loads on first use instead");
         }
     });
 }

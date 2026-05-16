@@ -3,8 +3,8 @@
 
 fn main() {
     // ── Panic hook ────────────────────────────────────────────────────────────
-    // Install before anything else so that crashes anywhere — including inside
-    // Tauri's setup — are captured. `log::error!` only works after
+    // Install before anything else so that crashes anywhere - including inside
+    // Tauri's setup - are captured. `log::error!` only works after
     // tauri-plugin-log is registered; `eprintln!` is the unconditional fallback
     // for panics that fire before the log subscriber is up.
     let default_hook = std::panic::take_hook();
@@ -26,7 +26,7 @@ fn main() {
         // Try the structured logger first (works once tauri-plugin-log is up).
         log::error!("{}", msg);
 
-        // Always write to stderr — catches pre-init panics and surfaces in any
+        // Always write to stderr - catches pre-init panics and surfaces in any
         // terminal / OS crash reporter regardless of log state.
         eprintln!("[vocyl PANIC] {}", msg);
 

@@ -1,4 +1,4 @@
-//! Wayland text bridge — best-effort PRIMARY selection, clipboard fallback.
+//! Wayland text bridge - best-effort PRIMARY selection, clipboard fallback.
 //!
 //! # Limitations (Wayland security model)
 //!

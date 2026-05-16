@@ -95,7 +95,7 @@ pub fn start_recording<R: tauri::Runtime>(
         let config = match device.default_input_config() {
             Ok(c) => {
                 log::info!(
-                    "STT: input config — sample_rate={} channels={} format={:?}",
+                    "STT: input config - sample_rate={} channels={} format={:?}",
                     c.sample_rate().0,
                     c.channels(),
                     c.sample_format()

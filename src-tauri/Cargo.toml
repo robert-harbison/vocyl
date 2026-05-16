@@ -51,10 +51,10 @@ tar = "0.4"
 # Clipboard read/write for TTS selected-text capture and injection
 arboard = "3"
 
-# Kokoro TTS — native ONNX inference, model stays loaded between calls
+# Kokoro TTS - native ONNX inference, model stays loaded between calls
 sherpa-onnx = "1"
 
-# Whisper STT — native inference on all platforms.
+# Whisper STT - native inference on all platforms.
 # Requires LLVM/libclang at build time (for bindgen). Install once:
 #   Windows: winget install LLVM.LLVM  (then set LIBCLANG_PATH in env)
 #   macOS:   brew install llvm

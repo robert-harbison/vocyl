@@ -1,4 +1,4 @@
-//! Linux text bridge — runtime X11/Wayland detection.
+//! Linux text bridge - runtime X11/Wayland detection.
 //!
 //! The display server is detected at runtime (not compile time) by inspecting
 //! environment variables:
@@ -49,7 +49,7 @@ pub fn new_linux_bridge() -> Box<dyn TextBridge + Send + Sync> {
         }
         DisplayServer::Unknown => {
             log::warn!(
-                "text_bridge: no DISPLAY or WAYLAND_DISPLAY — using Wayland bridge as default"
+                "text_bridge: no DISPLAY or WAYLAND_DISPLAY - using Wayland bridge as default"
             );
             Box::new(WaylandBridge)
         }

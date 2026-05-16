@@ -56,7 +56,7 @@ pub fn setup<R: tauri::Runtime>(
     };
 
     log::info!(
-        "Registering shortcuts — PTT='{}', TTS='{}'",
+        "Registering shortcuts - PTT='{}', TTS='{}'",
         ptt_shortcut,
         tts_shortcut
     );
@@ -76,7 +76,7 @@ pub fn register_shortcuts<R: tauri::Runtime>(
     tts_shortcut: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     log::info!(
-        "Registering global shortcuts — PTT='{}', TTS='{}'",
+        "Registering global shortcuts - PTT='{}', TTS='{}'",
         ptt_shortcut,
         tts_shortcut
     );
@@ -104,7 +104,7 @@ pub fn update_shortcuts<R: tauri::Runtime>(
     ptt: String,
     tts: String,
 ) -> Result<(), String> {
-    log::info!("Updating shortcuts — PTT='{}', TTS='{}'", ptt, tts);
+    log::info!("Updating shortcuts - PTT='{}', TTS='{}'", ptt, tts);
     register_shortcuts(&app, &ptt, &tts).map_err(|e| e.to_string())
 }
 
@@ -123,7 +123,7 @@ pub fn resume_shortcuts<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> Result<(
         let s = cache.0.lock().unwrap();
         (s.ptt_shortcut.clone(), s.tts_shortcut.clone())
     };
-    log::info!("Resuming global shortcuts — PTT='{}', TTS='{}'", ptt, tts);
+    log::info!("Resuming global shortcuts - PTT='{}', TTS='{}'", ptt, tts);
     register_shortcuts(&app, &ptt, &tts).map_err(|e| e.to_string())
 }
 
@@ -137,7 +137,7 @@ fn handle_ptt<R: tauri::Runtime>(app: &tauri::AppHandle<R>, state: ShortcutState
                 return;
             }
 
-            log::info!("PTT: key pressed — starting push-to-talk");
+            log::info!("PTT: key pressed - starting push-to-talk");
             if let Some(overlay) = app.get_webview_window("overlay") {
                 let _ = overlay.show();
                 emit_overlay_state(app, "waiting");
@@ -155,7 +155,7 @@ fn handle_ptt<R: tauri::Runtime>(app: &tauri::AppHandle<R>, state: ShortcutState
         }
 
         ShortcutState::Released => {
-            log::info!("PTT: key released — transcribing");
+            log::info!("PTT: key released - transcribing");
             let handle = app.clone();
             tauri::async_runtime::spawn(async move {
                 emit_overlay_state(&handle, "processing");
@@ -204,12 +204,12 @@ fn handle_tts<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     let tts = app.state::<TtsState>();
 
     if tts.is_playing.load(std::sync::atomic::Ordering::SeqCst) {
-        log::info!("TTS: shortcut pressed while playing — stopping");
+        log::info!("TTS: shortcut pressed while playing - stopping");
         stop_speaking(app);
         return;
     }
 
-    log::info!("TTS: shortcut pressed — capturing selected text");
+    log::info!("TTS: shortcut pressed - capturing selected text");
     let text = match get_selected_text() {
         Ok(t) if !t.trim().is_empty() => {
             log::info!("TTS: got selected text ({} chars)", t.trim().len());

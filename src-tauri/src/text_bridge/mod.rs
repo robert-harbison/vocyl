@@ -30,7 +30,7 @@ pub mod error;
 pub use capabilities::TextBridgeCapabilities;
 pub use error::TextBridgeError;
 
-// Platform-specific modules — #[cfg] only at module declarations, not inside
+// Platform-specific modules - #[cfg] only at module declarations, not inside
 // business logic.
 #[cfg(target_os = "windows")]
 mod windows;
@@ -103,7 +103,7 @@ fn create_bridge() -> Box<dyn TextBridge + Send + Sync> {
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
-        log::warn!("text_bridge: unsupported platform — no native bridge available");
+        log::warn!("text_bridge: unsupported platform - no native bridge available");
         return Box::new(UnsupportedBridge);
     }
 }

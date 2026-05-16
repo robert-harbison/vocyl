@@ -1,4 +1,4 @@
-//! X11 text bridge — PRIMARY selection primary, clipboard fallback.
+//! X11 text bridge - PRIMARY selection primary, clipboard fallback.
 //!
 //! On X11 any text the user highlights is automatically placed in the PRIMARY
 //! selection. Reading PRIMARY requires no Ctrl+C and avoids the arboard

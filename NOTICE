@@ -62,7 +62,7 @@ repository above.
 -------------------------------------------------------------------------
 
 -------------------------------------------------------------------------
-whisper-rs (Whisper STT, Rust bindings — Linux/macOS only)
+whisper-rs (Whisper STT, Rust bindings - Linux/macOS only)
 https://github.com/tazz4843/whisper-rs
 Licensed under: MIT
 -------------------------------------------------------------------------

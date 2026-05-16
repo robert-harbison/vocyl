@@ -37,7 +37,7 @@ pub fn setup<R: tauri::Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn s
                 ..
             } = event
             {
-                log::info!("Tray: left-click — toggling settings window");
+                log::info!("Tray: left-click - toggling settings window");
                 toggle_settings(tray.app_handle());
             }
         })

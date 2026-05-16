@@ -33,7 +33,7 @@ describe('useDownloadPending', () => {
 	});
 
 	it('does not auto-clear isPending if isComplete never changes after being set to true', () => {
-		// The effect only re-runs when isComplete changes — if it was already true on mount
+		// The effect only re-runs when isComplete changes - if it was already true on mount
 		// and never changes again, a subsequent setIsPending(true) won't be cleared.
 		// This situation cannot occur in practice (you wouldn't start a download for
 		// something already complete), but documents the hook's behavioural boundary.

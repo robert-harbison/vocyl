@@ -1,4 +1,4 @@
-//! Windows text bridge — UI Automation primary, clipboard fallback.
+//! Windows text bridge - UI Automation primary, clipboard fallback.
 //!
 //! # UI Automation via raw COM vtable calls
 //!
@@ -24,7 +24,7 @@
 //!
 //! # Text insertion
 //! Clipboard paste (Ctrl+V) is used. `IUIAutomationValuePattern::SetValue`
-//! replaces the entire field — incorrect for PTT dictation. Clipboard paste
+//! replaces the entire field - incorrect for PTT dictation. Clipboard paste
 //! naturally inserts at the cursor or replaces the current selection.
 
 use std::os::raw::c_void;
@@ -44,7 +44,7 @@ type BSTR = *mut u16;
 // UIAutomation pattern ID for text (constant from Windows SDK)
 const UIA_TEXT_PATTERN_ID: i32 = 10014;
 
-/// COM GUID — matches the Windows SDK `GUID` struct layout.
+/// COM GUID - matches the Windows SDK `GUID` struct layout.
 #[repr(C)]
 struct GUID {
     data1: u32,
@@ -240,7 +240,7 @@ unsafe fn bstr_to_string(bstr: BSTR) -> Option<String> {
 /// Read the selected text in the focused element via UI Automation.
 ///
 /// Returns `Err` when UIA is structurally unavailable for the focused element
-/// (no focused element, element lacks TextPattern support) — callers should
+/// (no focused element, element lacks TextPattern support) - callers should
 /// fall back to clipboard. Returns `Ok(None)` only when TextPattern IS
 /// supported and confirms there is no active selection.
 fn uia_get_selected_text() -> Result<Option<String>, String> {
@@ -270,13 +270,13 @@ unsafe fn uia_get_selected_text_inner() -> Result<Option<String>, String> {
     let elem = uia_get_focused_element(uia.as_raw())
         .ok_or_else(|| "no focused element".to_string())?;
 
-    // GetCurrentPattern returns IUnknown — QueryInterface to IUIAutomationTextPattern.
+    // GetCurrentPattern returns IUnknown - QueryInterface to IUIAutomationTextPattern.
     let pattern_unk = uia_element_get_pattern(elem.as_raw(), UIA_TEXT_PATTERN_ID)
         .ok_or_else(|| "element has no TextPattern support".to_string())?;
     let text_pattern = com_query_interface(pattern_unk.as_raw(), &IID_IUIAUTOMATION_TEXT_PATTERN)
         .ok_or_else(|| "QueryInterface for IUIAutomationTextPattern failed".to_string())?;
 
-    // TextPattern IS supported from here — Ok(None) means authoritative "no selection".
+    // TextPattern IS supported from here - Ok(None) means authoritative "no selection".
     let Some(ranges) = uia_text_pattern_get_selection(text_pattern.as_raw()) else {
         log::debug!("UIA: GetSelection returned null");
         return Ok(None);
@@ -331,7 +331,7 @@ fn windows_fallback_config() -> FallbackConfig {
         send_paste: win_send_paste,
         send_copy: win_send_copy,
         release_modifiers: win_release_modifiers,
-        // Windows clipboard is message-based — no setup delay needed.
+        // Windows clipboard is message-based - no setup delay needed.
         // Brief post-paste wait lets the target app consume the paste message.
         pre_paste_ms: 0,
         post_paste_ms: 150,

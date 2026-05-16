@@ -44,7 +44,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            log::warn!("Second instance launch attempted — focusing existing window");
+            log::warn!("Second instance launch attempted - focusing existing window");
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.set_focus();
@@ -109,7 +109,7 @@ pub fn run() {
             // Auto-show settings on first run
             let config_dir = app.path().app_config_dir()?;
             if !config_dir.join("settings.json").exists() {
-                log::info!("No settings file found — opening setup wizard");
+                log::info!("No settings file found - opening setup wizard");
                 windows::open_settings_window(app.handle())?;
             } else {
                 log::info!(

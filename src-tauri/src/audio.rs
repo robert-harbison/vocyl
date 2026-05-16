@@ -106,7 +106,7 @@ fn parse_pactl_output(text: &str, input: bool) -> Vec<AudioDevice> {
 
     let flush = |name: Option<String>, desc: Option<String>, devices: &mut Vec<AudioDevice>| {
         if let (Some(id), Some(display)) = (name, desc) {
-            // Skip monitor sources — they capture the output of a sink, not a real mic.
+            // Skip monitor sources - they capture the output of a sink, not a real mic.
             if input && id.ends_with(".monitor") {
                 return;
             }

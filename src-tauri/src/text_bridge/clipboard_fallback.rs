@@ -11,7 +11,7 @@
 //! `Clipboard` value is alive. Dropping the instance before sending Ctrl+C
 //! ensures that thread surrenders ownership so the focused app can claim it.
 //! On Windows and macOS the clipboard is message-based (no background thread),
-//! so fresh instances are harmless — the behaviour is identical to reusing one.
+//! so fresh instances are harmless - the behaviour is identical to reusing one.
 //!
 //! **No correctness sleeps**: The only sleeps here implement real protocol
 //! requirements (giving the target app time to consume a paste, giving
@@ -133,7 +133,7 @@ pub fn get_selection_via_copy(
         cb.set_text("")
             .map_err(|e| TextBridgeError::ClipboardError(e.to_string()))?;
         saved
-        // cb drops here — arboard background thread surrenders X11 CLIPBOARD
+        // cb drops here - arboard background thread surrenders X11 CLIPBOARD
         // ownership before the copy shortcut fires.
     };
 

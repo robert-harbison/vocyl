@@ -6,9 +6,9 @@ Apache-2.0 and as good practice for open-source software.
 
 > **Key for "Use type":**
 >
-> - **Compiled in** — statically or dynamically linked into the Vocyl binary
-> - **Runtime download** — downloaded at the user's request, NOT bundled in the installer
-> - **Subprocess** — executed as a separate OS process; not linked into Vocyl in any way
+> - **Compiled in** - statically or dynamically linked into the Vocyl binary
+> - **Runtime download** - downloaded at the user's request, NOT bundled in the installer
+> - **Subprocess** - executed as a separate OS process; not linked into Vocyl in any way
 
 ---
 
@@ -272,7 +272,7 @@ OpenAI Whisper models. They are NOT bundled with or compiled into Vocyl.
 - **Model weights/voices/tokens:** Apache-2.0
 - **Use type:** Runtime download (model files loaded by sherpa-onnx at runtime)
 
-**⚠️ Important — espeak-ng data files (GPL-3.0):**
+**⚠️ Important - espeak-ng data files (GPL-3.0):**
 
 The Kokoro model package (`kokoro-en-v0_19.tar.bz2`) includes espeak-ng
 phonemizer data (`espeak-ng-data/`). The espeak-ng project is licensed
@@ -315,7 +315,7 @@ assets) with no runtime linking implications.
 
 | Component          | License           | Compiled into Vocyl binary? | Notes                    |
 | ------------------ | ----------------- | --------------------------- | ------------------------ |
-| Vocyl itself       | Apache-2.0        | —                           |                          |
+| Vocyl itself       | Apache-2.0        | -                           |                          |
 | All Rust crates    | MIT or Apache-2.0 | Yes                         | ✅ Compatible            |
 | all JS deps        | MIT               | Build-time bundle           | ✅ Compatible            |
 | whisper-cli.exe    | MIT               | No (subprocess, Windows)    | ✅ Compatible            |

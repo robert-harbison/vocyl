@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   # ─────────────────────────────────────────────
-  # Windows — NSIS installer + MSI
+  # Windows - NSIS installer + MSI
   # ─────────────────────────────────────────────
   build-windows:
     runs-on: windows-latest
@@ -37,8 +37,8 @@ jobs:
 
       # ── Windows code signing (add when you have a cert) ─────────────────
       # Add these as repository secrets, then uncomment the env block below:
-      #   WINDOWS_CERTIFICATE    — base64-encoded .pfx file
-      #   WINDOWS_CERTIFICATE_PASSWORD — pfx password
+      #   WINDOWS_CERTIFICATE    - base64-encoded .pfx file
+      #   WINDOWS_CERTIFICATE_PASSWORD - pfx password
       # Also update tauri.conf.json bundle.windows.certificateThumbprint.
       # See: https://v2.tauri.app/distribute/sign/windows/
       # ────────────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ jobs:
           if-no-files-found: error
 
   # ─────────────────────────────────────────────
-  # Linux x86_64 — AppImage + deb + rpm
+  # Linux x86_64 - AppImage + deb + rpm
   # ─────────────────────────────────────────────
   build-linux:
     runs-on: ubuntu-latest
@@ -107,7 +107,7 @@ jobs:
           if-no-files-found: error
 
   # ─────────────────────────────────────────────
-  # macOS — ARM64 (native) + Intel (cross-compile)
+  # macOS - ARM64 (native) + Intel (cross-compile)
   # Both run sequentially in one job to save macOS runner minutes (10× multiplier).
   # ─────────────────────────────────────────────
   build-macos:
@@ -143,12 +143,12 @@ jobs:
 
       # ── macOS code signing + notarization (add when you have an Apple Developer account) ──
       # Add these as repository secrets, then add an env: block to each build step below:
-      #   APPLE_CERTIFICATE          — base64-encoded .p12 (Developer ID Application cert)
-      #   APPLE_CERTIFICATE_PASSWORD — p12 password
-      #   APPLE_SIGNING_IDENTITY     — "Developer ID Application: Your Name (TEAMID)"
-      #   APPLE_ID                   — your Apple ID email
-      #   APPLE_PASSWORD             — app-specific password (not your Apple ID password)
-      #   APPLE_TEAM_ID              — your 10-character Team ID
+      #   APPLE_CERTIFICATE          - base64-encoded .p12 (Developer ID Application cert)
+      #   APPLE_CERTIFICATE_PASSWORD - p12 password
+      #   APPLE_SIGNING_IDENTITY     - "Developer ID Application: Your Name (TEAMID)"
+      #   APPLE_ID                   - your Apple ID email
+      #   APPLE_PASSWORD             - app-specific password (not your Apple ID password)
+      #   APPLE_TEAM_ID              - your 10-character Team ID
       # See: https://v2.tauri.app/distribute/sign/macos/
       # Without signing, testers must right-click → Open, or run:
       #   xattr -d com.apple.quarantine /path/to/Vocyl.app
