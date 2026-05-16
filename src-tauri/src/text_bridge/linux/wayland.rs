@@ -96,8 +96,10 @@ fn wayland_send_copy(enigo: &mut Enigo) -> Result<(), TextBridgeError> {
 }
 
 fn wayland_release_modifiers(enigo: &mut Enigo) {
-    enigo.key(Key::Shift, Direction::Release).ok();
     enigo.key(Key::Alt, Direction::Release).ok();
+    enigo.key(Key::Shift, Direction::Release).ok();
+    enigo.key(Key::Control, Direction::Release).ok();
+    enigo.key(Key::Meta, Direction::Release).ok();
 }
 
 fn wayland_fallback_config() -> FallbackConfig {

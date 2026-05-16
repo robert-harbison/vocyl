@@ -80,11 +80,18 @@ pub fn insert_via_paste(text: &str, config: &FallbackConfig) -> Result<(), TextB
         .set_text(text)
         .map_err(|e| TextBridgeError::ClipboardError(e.to_string()))?;
 
+    // Release any modifier keys that may still be logically held in the focused
+    // app (e.g. Alt from a PTT shortcut like Alt+A on Wayland). This must
+    // happen before send_paste so Ctrl+V is not seen as Alt+Ctrl+V.
+    // The pre_paste_ms sleep that follows gives the app time to process the
+    // releases before the paste shortcut arrives.
+    let mut enigo = new_enigo()?;
+    (config.release_modifiers)(&mut enigo);
+
     if config.pre_paste_ms > 0 {
         std::thread::sleep(Duration::from_millis(config.pre_paste_ms));
     }
 
-    let mut enigo = new_enigo()?;
     (config.send_paste)(&mut enigo)?;
     std::thread::sleep(Duration::from_millis(config.post_paste_ms));
 

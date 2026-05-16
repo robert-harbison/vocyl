@@ -320,8 +320,10 @@ fn win_send_copy(enigo: &mut Enigo) -> Result<(), TextBridgeError> {
 }
 
 fn win_release_modifiers(enigo: &mut Enigo) {
-    enigo.key(Key::Shift, Direction::Release).ok();
     enigo.key(Key::Alt, Direction::Release).ok();
+    enigo.key(Key::Shift, Direction::Release).ok();
+    enigo.key(Key::Control, Direction::Release).ok();
+    enigo.key(Key::Meta, Direction::Release).ok();
 }
 
 fn windows_fallback_config() -> FallbackConfig {

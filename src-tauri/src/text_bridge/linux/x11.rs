@@ -81,8 +81,10 @@ fn x11_send_copy(enigo: &mut Enigo) -> Result<(), TextBridgeError> {
 }
 
 fn x11_release_modifiers(enigo: &mut Enigo) {
-    enigo.key(Key::Shift, Direction::Release).ok();
     enigo.key(Key::Alt, Direction::Release).ok();
+    enigo.key(Key::Shift, Direction::Release).ok();
+    enigo.key(Key::Control, Direction::Release).ok();
+    enigo.key(Key::Meta, Direction::Release).ok();
 }
 
 fn x11_fallback_config() -> FallbackConfig {
