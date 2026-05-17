@@ -1,6 +1,10 @@
-<div align="center">
+<br>
+
+<div style="text-align: center;">
   <img src="src/assets/Vocyl_Logo.png" alt="Vocyl Logo" width="200"/>
 </div>
+
+<br>
 
 # Vocyl
 
