@@ -17,11 +17,12 @@ import { modelService } from '@services/modelService';
 import { settingsService } from '@services/settingsService';
 import { logger } from '@services/logService';
 import { KOKORO_VOICES, STT_MODELS } from '@/constants/models';
-import { Check, Mic } from 'lucide-react';
+import { Check } from 'lucide-react';
 import ModelRow, { type DownloadStates } from './ModelRow';
 import BinaryRow from './BinaryRow';
 import { systemService } from '@services/systemService';
 import { getRecommendedSttModel } from '@utils/modelUtils';
+import logoWhiteImage from '@assets/FullLogoColor_WhiteText.png';
 
 // ── Local types ───────────────────────────────────────────────────────────────
 
@@ -187,10 +188,7 @@ export default function SettingsScreen() {
 			{/* Header */}
 			<header className="border-b border-border px-6 py-4 flex items-center justify-between">
 				<div className="flex items-center gap-3">
-					<div className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-primary">
-						<Mic className="w-4 h-4 text-white" />
-					</div>
-					<h1 className="text-lg font-semibold text-text">Vocyl Settings</h1>
+					<img src={logoWhiteImage} alt="Vocyl Logo" className="h-8" />
 				</div>
 				<span className="text-xs text-text-faint font-mono bg-bg-elevated px-2 py-1 rounded">
 					v{__APP_VERSION__}
