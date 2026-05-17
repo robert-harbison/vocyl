@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="src/assets/Vocyl_Logo.png" alt="Vocyl Logo" width="200"/>
+</div>
+
 # Vocyl
 
 Vocyl is a work-in-progress desktop application for fully local, offline text-to-speech and speech-to-text.
