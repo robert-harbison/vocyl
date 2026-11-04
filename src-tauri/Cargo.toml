@@ -1,7 +1,7 @@
 [package]
 name = "vocyl"
-version = "0.1.0"
-description = "A Tauri App"
+version = "0.0.2"
+description = "Vocyl cross-platform TTS/STT app."
 authors = ["you"]
 edition = "2021"
 
@@ -18,10 +18,48 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
+tauri-plugin-single-instance = "2"
 tauri-plugin-opener = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-log = { version = "2", features = ["colored"] }
+log = "0.4"
+sysinfo = "0.30"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Audio device enumeration and recording
+cpal = "0.15"
+
+# Audio playback
+rodio = { version = "0.20", features = ["wav"] }
+
+# HTTP downloads with streaming progress
+reqwest = { version = "0.12", features = ["stream"] }
+futures-util = "0.3"
+
+# Async file I/O and process execution
+tokio = { version = "1", features = ["fs", "process", "time", "sync", "macros", "rt"] }
+
+# Text injection at cursor
+enigo = "0.3"
+
+# tar.bz2 extraction for Kokoro model package
+bzip2 = "0.4"
+tar = "0.4"
+
+# Clipboard read/write for TTS selected-text capture and injection
+arboard = "3"
+
+# Kokoro TTS - native ONNX inference, model stays loaded between calls
+sherpa-onnx = "1"
+
+# Whisper STT - native inference on all platforms.
+# Requires LLVM/libclang at build time (for bindgen). Install once:
+#   Windows: winget install LLVM.LLVM  (then set LIBCLANG_PATH in env)
+#   macOS:   brew install llvm
+#   Linux:   apt install libclang-dev
+whisper-rs = "0.16"
 
 # Faster incremental builds in dev, small binary in release
 [profile.dev]
@@ -34,4 +72,3 @@ lto = "thin"
 opt-level = 3
 panic = "abort"
 strip = "symbols"
-

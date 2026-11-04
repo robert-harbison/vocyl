@@ -1,0 +1,149 @@
+Vocyl
+Copyright 2026 Robert Harbison
+
+This product is licensed under the Apache License, Version 2.0.
+You may obtain a copy of the License at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+=========================================================================
+NOTICE FOR THIRD-PARTY COMPONENTS
+=========================================================================
+
+This software includes or interacts with the following third-party
+components. Their licenses are reproduced in THIRD_PARTY_LICENSES.md.
+
+-------------------------------------------------------------------------
+Tauri (framework)
+https://github.com/tauri-apps/tauri
+Copyright 2019-2024 Tauri Programme within The Commons Conservancy
+Licensed under: MIT OR Apache-2.0
+-------------------------------------------------------------------------
+
+-------------------------------------------------------------------------
+cpal (cross-platform audio)
+https://github.com/RustAudio/cpal
+Copyright The CPAL Contributors
+Licensed under: Apache-2.0
+-------------------------------------------------------------------------
+
+-------------------------------------------------------------------------
+rodio (audio playback)
+https://github.com/RustAudio/rodio
+Copyright The Rodio Contributors
+Licensed under: MIT OR Apache-2.0
+-------------------------------------------------------------------------
+
+-------------------------------------------------------------------------
+sherpa-onnx (Kokoro TTS engine, Rust bindings)
+https://github.com/k2-fsa/sherpa-onnx
+Copyright 2023-2024 k2-fsa / Next-gen Kaldi
+Licensed under: Apache-2.0
+-------------------------------------------------------------------------
+
+-------------------------------------------------------------------------
+Kokoro TTS model (kokoro-en-v0_19)
+https://huggingface.co/hexgrad/Kokoro-82M
+The ONNX model weights and voice data are licensed under: Apache-2.0
+Licensed under: Apache-2.0
+-------------------------------------------------------------------------
+
+-------------------------------------------------------------------------
+espeak-ng (phonemizer data, bundled inside the Kokoro model package)
+https://github.com/espeak-ng/espeak-ng
+Copyright 2015-2022 David Beaumont and contributors
+Licensed under: GPL-3.0-or-later
+NOTE: The espeak-ng data files are downloaded as part of the Kokoro
+model package at the user's request, are NOT compiled into this binary,
+and are processed by the sherpa-onnx library at runtime. Users who
+download the Kokoro model package receive GPL-3.0-licensed data and are
+subject to those terms. Source code for espeak-ng is available at the
+repository above.
+-------------------------------------------------------------------------
+
+-------------------------------------------------------------------------
+whisper-rs (Whisper STT, Rust bindings - Linux/macOS only)
+https://github.com/tazz4843/whisper-rs
+Licensed under: MIT
+-------------------------------------------------------------------------
+
+-------------------------------------------------------------------------
+whisper.cpp (STT inference engine)
+https://github.com/ggml-org/whisper.cpp
+Copyright 2022 Georgi Gerganov
+Licensed under: MIT
+NOTE: On Windows, a pre-built whisper-cli.exe binary is downloaded at
+the user's request and run as a separate subprocess.
+-------------------------------------------------------------------------
+
+-------------------------------------------------------------------------
+Whisper models (GGML format)
+https://huggingface.co/ggerganov/whisper.cpp
+Original models Copyright 2022 OpenAI
+Licensed under: MIT
+NOTE: GGML-format Whisper models are downloaded directly from
+Hugging Face at the user's request and are NOT bundled with this software.
+-------------------------------------------------------------------------
+
+-------------------------------------------------------------------------
+reqwest (HTTP client)
+https://github.com/seanmonstar/reqwest
+Copyright Sean McArthur
+Licensed under: MIT OR Apache-2.0
+-------------------------------------------------------------------------
+
+-------------------------------------------------------------------------
+tokio (async runtime)
+https://github.com/tokio-rs/tokio
+Copyright Tokio Contributors
+Licensed under: MIT
+-------------------------------------------------------------------------
+
+-------------------------------------------------------------------------
+serde / serde_json
+https://github.com/serde-rs/serde
+Copyright 2016 Erick Tryzelaar and David Tolnay
+Licensed under: MIT OR Apache-2.0
+-------------------------------------------------------------------------
+
+-------------------------------------------------------------------------
+enigo (keyboard/mouse input simulation)
+https://github.com/enigo-rs/enigo
+Licensed under: MIT
+-------------------------------------------------------------------------
+
+-------------------------------------------------------------------------
+arboard (clipboard access)
+https://github.com/1Password/arboard
+Copyright 1Password
+Licensed under: MIT OR Apache-2.0
+-------------------------------------------------------------------------
+
+-------------------------------------------------------------------------
+hound (WAV file I/O)
+https://github.com/ruuda/hound
+Copyright 2015 Ruud van Asseldonk
+Licensed under: Apache-2.0
+-------------------------------------------------------------------------
+
+-------------------------------------------------------------------------
+React
+https://github.com/facebook/react
+Copyright 2013-present Facebook, Inc.
+Licensed under: MIT
+-------------------------------------------------------------------------
+
+-------------------------------------------------------------------------
+Tailwind CSS
+https://github.com/tailwindlabs/tailwindcss
+Copyright Tailwind Labs, Inc.
+Licensed under: MIT
+-------------------------------------------------------------------------
+
+-------------------------------------------------------------------------
+react-hook-form
+https://github.com/react-hook-form/react-hook-form
+Copyright 2019-present Beier (Bill) Luo
+Licensed under: MIT
+-------------------------------------------------------------------------
+

@@ -1,0 +1,119 @@
+/* ─── Root container ─────────────────────────────────────────────────────────
+   Transparent viewport - the pill's border-radius creates the visible shape. */
+.container {
+	width: 100%;
+	height: 100%;
+	background: transparent;
+}
+
+/* ─── Pill ───────────────────────────────────────────────────────────────────
+   overflow:hidden is the "clip rect" - it trims the wave bars to the rounded
+   pill silhouette. The window's transparent corners stay see-through.        */
+.pill {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	border-radius: 32px; /* exact half of 64 px height → perfect pill */
+	overflow: hidden;
+	background: transparent;
+	box-sizing: border-box;
+}
+
+/* ─── Wave bars wrapper ──────────────────────────────────────────────────────
+   perspective() + rotateX() give the 3-D stage tilt.                        */
+.waves {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	gap: 3px;
+	padding: 0 10px;
+	transform: perspective(240px) rotateX(12deg);
+	transform-origin: center 75%;
+}
+
+/* ─── Individual bar ─────────────────────────────────────────────────────────*/
+.bar {
+	flex: 1;
+	border-radius: 3px;
+	background: linear-gradient(
+		to top,
+		var(--wave-color),
+		color-mix(in srgb, var(--wave-color) 35%, transparent)
+	);
+	box-shadow:
+		0 0 5px 1px color-mix(in srgb, var(--wave-color) 55%, transparent),
+		0 0 12px color-mix(in srgb, var(--wave-color) 25%, transparent);
+	animation: wave 1s ease-in-out infinite;
+	transform: scaleY(0.15);
+	transform-origin: center center;
+}
+
+/* Progressive fade toward both edges */
+.bar:nth-child(1),
+.bar:nth-last-child(1) {
+	opacity: 0.1;
+}
+.bar:nth-child(2),
+.bar:nth-last-child(2) {
+	opacity: 0.2;
+}
+.bar:nth-child(3),
+.bar:nth-last-child(3) {
+	opacity: 0.33;
+}
+.bar:nth-child(4),
+.bar:nth-last-child(4) {
+	opacity: 0.48;
+}
+.bar:nth-child(5),
+.bar:nth-last-child(5) {
+	opacity: 0.63;
+}
+.bar:nth-child(6),
+.bar:nth-last-child(6) {
+	opacity: 0.78;
+}
+
+@keyframes wave {
+	0%,
+	100% {
+		transform: scaleY(0.15);
+	}
+	50% {
+		transform: scaleY(1);
+	}
+}
+
+/* ─── Label ──────────────────────────────────────────────────────────────────
+   No background - the waves show through. Legibility comes entirely from the
+   layered dark text-shadow halo around each letter.                          */
+.labelWrap {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	pointer-events: none;
+	z-index: 1;
+}
+
+.label {
+	color: #ffffff;
+	font-size: 13px;
+	font-family:
+		system-ui,
+		-apple-system,
+		'Segoe UI',
+		sans-serif;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	white-space: nowrap;
+	/* Stacked shadows build a solid dark "halo" that keeps text crisp over
+	   any wave colour without needing a blocking background.                 */
+	text-shadow:
+		0 0 14px rgba(0, 0, 0, 1),
+		0 0 8px rgba(0, 0, 0, 1),
+		0 0 4px rgba(0, 0, 0, 0.95),
+		0 1px 3px rgba(0, 0, 0, 0.9);
+}

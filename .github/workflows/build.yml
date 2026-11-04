@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   # ─────────────────────────────────────────────
-  # Windows — NSIS installer + MSI
+  # Windows - NSIS installer + MSI
   # ─────────────────────────────────────────────
   build-windows:
     runs-on: windows-latest
@@ -25,7 +25,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.90.0
 
       # sherpa-onnx and other heavy native crates make the first build slow (~30-60 min).
       # This cache cuts subsequent runs dramatically.
@@ -37,8 +37,8 @@ jobs:
 
       # ── Windows code signing (add when you have a cert) ─────────────────
       # Add these as repository secrets, then uncomment the env block below:
-      #   WINDOWS_CERTIFICATE    — base64-encoded .pfx file
-      #   WINDOWS_CERTIFICATE_PASSWORD — pfx password
+      #   WINDOWS_CERTIFICATE    - base64-encoded .pfx file
+      #   WINDOWS_CERTIFICATE_PASSWORD - pfx password
       # Also update tauri.conf.json bundle.windows.certificateThumbprint.
       # See: https://v2.tauri.app/distribute/sign/windows/
       # ────────────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ jobs:
           if-no-files-found: error
 
   # ─────────────────────────────────────────────
-  # Linux x86_64 — AppImage + deb + rpm
+  # Linux x86_64 - AppImage + deb + rpm
   # ─────────────────────────────────────────────
   build-linux:
     runs-on: ubuntu-latest
@@ -86,7 +86,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.90.0
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -107,7 +107,7 @@ jobs:
           if-no-files-found: error
 
   # ─────────────────────────────────────────────
-  # macOS — ARM64 (native) + Intel (cross-compile)
+  # macOS - ARM64 (native) + Intel (cross-compile)
   # Both run sequentially in one job to save macOS runner minutes (10× multiplier).
   # ─────────────────────────────────────────────
   build-macos:
@@ -120,57 +120,63 @@ jobs:
           node-version: 22
           cache: npm
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.90.0
         with:
           targets: x86_64-apple-darwin
+
+      # macOS runners (macOS 15+) ship with a Homebrew `rustup` formula that
+      # puts a `cargo` shim (actually `rustup-init`) in Homebrew's bin, which
+      # can shadow the real cargo installed by dtolnay/rust-toolchain.
+      # Prepending ~/.cargo/bin ensures the correct cargo is found first.
+      - name: Ensure cargo is on PATH
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          # v3: bust caches built when tauri was defaulting MACOSX_DEPLOYMENT_TARGET
+          # to 10.13 (cmake configured ggml without std::filesystem support).
+          # Root fix is tauri.conf.json bundle.macOS.minimumSystemVersion = "10.15".
+          key: v3
 
       - run: npm ci
 
       # ── macOS code signing + notarization (add when you have an Apple Developer account) ──
-      # Add these as repository secrets, then uncomment the env blocks below:
-      #   APPLE_CERTIFICATE          — base64-encoded .p12 (Developer ID Application cert)
-      #   APPLE_CERTIFICATE_PASSWORD — p12 password
-      #   APPLE_SIGNING_IDENTITY     — "Developer ID Application: Your Name (TEAMID)"
-      #   APPLE_ID                   — your Apple ID email
-      #   APPLE_PASSWORD             — app-specific password (not your Apple ID password)
-      #   APPLE_TEAM_ID              — your 10-character Team ID
+      # Add these as repository secrets, then add an env: block to each build step below:
+      #   APPLE_CERTIFICATE          - base64-encoded .p12 (Developer ID Application cert)
+      #   APPLE_CERTIFICATE_PASSWORD - p12 password
+      #   APPLE_SIGNING_IDENTITY     - "Developer ID Application: Your Name (TEAMID)"
+      #   APPLE_ID                   - your Apple ID email
+      #   APPLE_PASSWORD             - app-specific password (not your Apple ID password)
+      #   APPLE_TEAM_ID              - your 10-character Team ID
       # See: https://v2.tauri.app/distribute/sign/macos/
       # Without signing, testers must right-click → Open, or run:
       #   xattr -d com.apple.quarantine /path/to/Vocyl.app
       # ────────────────────────────────────────────────────────────────────────────────────
 
+      # Build with --bundles app only: Tauri's bundle_dmg.sh uses hdiutil which is
+      # unreliable on GitHub runners. We zip the .app ourselves with ditto instead.
+      # The package:mac scripts (dmg,app) are kept for local use unchanged.
       - name: Build macOS ARM64
-        run: npm run package:mac
-        # env:
-        #   APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-        #   APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        #   APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-        #   APPLE_ID: ${{ secrets.APPLE_ID }}
-        #   APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-        #   APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npx tauri build --bundles app
 
       - name: Build macOS Intel
-        run: npm run package:mac:intel
-        # env:
-        #   APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-        #   APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        #   APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-        #   APPLE_ID: ${{ secrets.APPLE_ID }}
-        #   APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-        #   APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npx tauri build --target x86_64-apple-darwin --bundles app
+
+      - name: Zip macOS ARM64
+        run: ditto -c -k --keepParent src-tauri/target/release/bundle/macos/vocyl.app vocyl-macos-arm64.zip
+
+      - name: Zip macOS Intel
+        run: ditto -c -k --keepParent src-tauri/target/x86_64-apple-darwin/release/bundle/macos/vocyl.app vocyl-macos-intel.zip
 
       - uses: actions/upload-artifact@v4
         with:
           name: vocyl-macos-arm64
-          path: src-tauri/target/release/bundle/dmg/*.dmg
+          path: vocyl-macos-arm64.zip
           if-no-files-found: error
 
       - uses: actions/upload-artifact@v4
         with:
           name: vocyl-macos-intel
-          path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+          path: vocyl-macos-intel.zip
           if-no-files-found: error

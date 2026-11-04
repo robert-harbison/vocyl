@@ -1,14 +1,126 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+mod audio;
+mod constants;
+mod models;
+mod overlay;
+mod platform;
+mod settings;
+mod stt;
+mod system;
+mod text_bridge;
+mod tts;
+mod tray;
+mod windows;
+mod app;
+
+use std::sync::Mutex;
+use tauri::Manager;
+use tauri::Emitter;
+
+use app::exit_app;
+use overlay::{update_shortcuts, suspend_shortcuts, resume_shortcuts};
+use settings::{load_settings, save_settings, settings_exist, SettingsCache};
+use stt::SttState;
+use tts::{prewarm_kokoro, TtsState};
+
 #[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+fn get_text_bridge_capabilities() -> text_bridge::TextBridgeCapabilities {
+    text_bridge::get_text_bridge_capabilities()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    use tauri_plugin_log::{Target, TargetKind};
+
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .targets([
+                    Target::new(TargetKind::Stdout),
+                    Target::new(TargetKind::LogDir {
+                        file_name: Some("vocyl".to_string()),
+                    }),
+                ])
+                .level(log::LevelFilter::Info)
+                .build(),
+        )
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            log::warn!("Second instance launch attempted - focusing existing window");
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+            app.emit("single-instance-attempted", ()).ok();
+        }))
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![
+            // Settings
+            settings_exist,
+            load_settings,
+            save_settings,
+            // Shortcuts
+            update_shortcuts,
+            suspend_shortcuts,
+            resume_shortcuts,
+            // Audio devices
+            audio::list_input_devices,
+            audio::list_output_devices,
+            // Model management
+            models::list_downloaded_files,
+            models::download_file,
+            models::delete_file,
+            models::is_kokoro_installed,
+            models::download_kokoro_package,
+            models::delete_kokoro_package,
+            // App
+            exit_app,
+            // System info
+            system::get_system_info,
+            // Text bridge capabilities (for UI to report degraded support)
+            get_text_bridge_capabilities,
+        ])
+        .setup(|app| {
+            log::info!(
+                "Vocyl {} starting up on {} ({})",
+                env!("CARGO_PKG_VERSION"),
+                std::env::consts::OS,
+                std::env::consts::ARCH,
+            );
+
+            // Load settings into the in-memory cache (used by shortcut handlers)
+            let cached = settings::load_settings_internal(app.handle())
+                .unwrap_or_else(|e| {
+                    log::warn!("Could not load saved settings ({}); using defaults", e);
+                    Default::default()
+                });
+            app.manage(SettingsCache(Mutex::new(cached)));
+
+            // STT / TTS runtime state
+            app.manage(SttState::new());
+            app.manage(TtsState::new());
+
+            tray::setup(app)?;
+            overlay::setup(app)?;
+
+            // Pre-warm the Kokoro TTS engine in the background so the first
+            // TTS call doesn't incur the model-loading delay.
+            prewarm_kokoro(app.handle());
+
+            // Auto-show settings on first run
+            let config_dir = app.path().app_config_dir()?;
+            if !config_dir.join("settings.json").exists() {
+                log::info!("No settings file found - opening setup wizard");
+                windows::open_settings_window(app.handle())?;
+            } else {
+                log::info!(
+                    "Settings loaded from {}",
+                    config_dir.join("settings.json").display()
+                );
+            }
+
+            log::info!("Vocyl startup complete");
+            Ok(())
+        })
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .expect("fatal error while running Tauri application");
 }
